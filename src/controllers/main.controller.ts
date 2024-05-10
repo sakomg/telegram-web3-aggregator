@@ -33,9 +33,6 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
-
-    console.log('bot session:', botClientContainer.client.session.save());
-    console.log('user session:', userClientContainer.client.session.save());
   }
 
   async processSubscriptionChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
@@ -84,7 +81,7 @@ export default class MainController {
           channel.messageId = messageIds[0];
           await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
           client.sendMessage(sender, {
-            message: `Message ${messageIds[0]} has been forwarded from ${channel.name} at ${Date.now().toLocaleString()}`,
+            message: `Message ${messageIds[0]} has been forwarded from ${channel.name} at ${new Date().toLocaleString()}`,
             parseMode: 'html',
           });
         }
