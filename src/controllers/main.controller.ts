@@ -1,4 +1,4 @@
-import { TelegramClient, client } from 'telegram';
+import { TelegramClient } from 'telegram';
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Entity } from 'telegram/define';
 import TgClientAuth from '../auth/main.auth';
@@ -60,7 +60,6 @@ export default class MainController {
         replyMessage = `Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
       }
     } catch (e) {
-      console.log(e);
       replyMessage = `Channel <b>${channelName}</b> doesn't exist, check the username.`;
     }
 

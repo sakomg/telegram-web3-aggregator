@@ -1,6 +1,6 @@
-import { TelegramClient } from 'telegram';
-import MainController from './controllers/main.controller';
+import 'dotenv/config';
 import config from 'config';
+import MainController from './controllers/main.controller';
 
 export default class App {
   bootstrap() {

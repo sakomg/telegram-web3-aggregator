@@ -16,8 +16,8 @@ export default class TgClientAuth {
   constructor(config: any, who: StartAsWho) {
     this.config = config;
     this.who = who;
-    const session = new StringSession(config.get(WHO_TO_SESSION[this.who]));
-    this.tgClient = new TelegramClient(session, config.get('TELEGRAM_API_ID'), config.get('TELEGRAM_API_HASH'), {
+    const session = new StringSession(process.env[WHO_TO_SESSION[this.who]]);
+    this.tgClient = new TelegramClient(session, Number(process.env.TELEGRAM_API_ID), process.env.TELEGRAM_API_HASH as string, {
       connectionRetries: 5,
     });
   }
@@ -28,9 +28,9 @@ export default class TgClientAuth {
 
   async start() {
     if (this.who == 'BOT') {
-      await this.startAsBot(this.config.get('TELEGRAM_TOKEN'));
+      await this.startAsBot(process.env.TELEGRAM_TOKEN as string);
     } else if (this.who == 'USER') {
-      await this.startAsUser(this.config.get('TELEGRAM_USER_PHONE'));
+      await this.startAsUser(process.env.TELEGRAM_USER_PHONE as string);
     }
   }
 
