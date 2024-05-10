@@ -29,7 +29,7 @@ export default class MainController {
           this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
         }
         if (message.startsWith('/start')) {
-          this.processStart(botClientContainer.client, messageService, sender);
+          setInterval(() => this.processStart(botClientContainer.client, messageService, sender), 10000);
         }
       }
     }, new NewMessage({}));
@@ -47,14 +47,18 @@ export default class MainController {
     try {
       const entity: Entity = await client.getEntity(channelName);
       if (entity.className === 'Channel') {
-        scrapChannels.push({
-          name: channelName,
-          messageId: 0,
-        });
-        const markdown = this.channelsToMarkdown(scrapChannels);
-        client.setParseMode('markdownv2');
-        client.sendMessage(this.storageChannel, { message: markdown });
-        replyMessage = `Channel <b>${channelName}</b> has been added to list.`;
+        if (!scrapChannels.map((item) => item.name).includes(channelName)) {
+          scrapChannels.push({
+            name: channelName,
+            messageId: 0,
+          });
+          const markdown = this.channelsToMarkdown(scrapChannels);
+
+          client.sendMessage(this.storageChannel, { message: markdown, parseMode: 'markdown' });
+          replyMessage = `Channel <b>${channelName}</b> has been added to list.`;
+        } else {
+          replyMessage = `<b>${channelName}</b> is already in the list.`;
+        }
       } else {
         replyMessage = `Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
       }
@@ -63,8 +67,7 @@ export default class MainController {
       replyMessage = `Channel <b>${channelName}</b> doesn't exist, check the username.`;
     }
 
-    client.setParseMode('html');
-    await client.sendMessage(sender, { message: replyMessage });
+    await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
   }
 
   async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
@@ -80,16 +83,16 @@ export default class MainController {
           needToUpdate = true;
           channel.messageId = messageIds[0];
           await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
+          client.sendMessage(sender, {
+            message: `Message ${messageIds[0]} has been forwarded from ${channel.name} at ${Date.now().toLocaleString()}`,
+            parseMode: 'html',
+          });
         }
       }
 
       if (needToUpdate) {
         const markdown = this.channelsToMarkdown(scrapChannels);
         client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
-      } else {
-        client.sendMessage(sender, {
-          message: 'Already messages synchronized.',
-        });
       }
     } else {
       client.sendMessage(sender, {
