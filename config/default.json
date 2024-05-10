@@ -1,0 +1,4 @@
+{
+  "TELEGRAM_TARGET_CHANNEL_USERNAME": "@web3_main",
+  "TELEGRAM_STORAGE_CHANNEL_USERNAME": "@web3_keeper"
+}
