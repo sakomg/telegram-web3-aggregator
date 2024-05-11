@@ -33,7 +33,7 @@ export default class MessageService {
         }),
       );
     } catch (e) {
-      throw new Error(`Can't forward messages from ${fromChannel} to ${toChannel}. ` + e);
+      throw new Error(`❌ Can't forward messages from ${fromChannel} to ${toChannel}. ` + e);
     }
   }
 }

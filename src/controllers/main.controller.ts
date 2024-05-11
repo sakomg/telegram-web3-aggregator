@@ -25,11 +25,17 @@ export default class MainController {
         const messageWrapper = event.message;
         const sender = await messageWrapper.getSender();
         const message = messageWrapper.message;
-        if (message.startsWith('/sub')) {
-          this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
-        }
-        if (message.startsWith('/start')) {
-          setInterval(() => this.processStart(botClientContainer.client, messageService, sender), 10000);
+        try {
+          if (message.startsWith('/sub')) {
+            console.log(`💥 /sub handler, message: ${message}`);
+            this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
+          }
+          if (message.startsWith('/start')) {
+            console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
+            setInterval(() => this.processStart(botClientContainer.client, messageService, sender), 10000);
+          }
+        } catch (e) {
+          console.log('❗❗❗ Error in handlers. Check it manually to resolve.');
         }
       }
     }, new NewMessage({}));
@@ -51,16 +57,16 @@ export default class MainController {
           });
           const markdown = this.channelsToMarkdown(scrapChannels);
 
-          client.sendMessage(this.storageChannel, { message: markdown, parseMode: 'markdown' });
-          replyMessage = `Channel <b>${channelName}</b> has been added to list.`;
+          client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+          replyMessage = `🔥 Channel <b>${channelName}</b> has been added to list.`;
         } else {
-          replyMessage = `<b>${channelName}</b> is already in the list.`;
+          replyMessage = `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
         }
       } else {
-        replyMessage = `Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
+        replyMessage = `⚠️ Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
       }
     } catch (e) {
-      replyMessage = `Channel <b>${channelName}</b> doesn't exist, check the username.`;
+      replyMessage = `😕 Channel <b>${channelName}</b> doesn't exist, check the username.`;
     }
 
     await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
@@ -76,13 +82,20 @@ export default class MainController {
         const result = await messageService.getMessagesHistory(channel.name, 1);
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
-          needToUpdate = true;
-          channel.messageId = messageIds[0];
-          await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
-          client.sendMessage(sender, {
-            message: `Message ${messageIds[0]} has been forwarded from ${channel.name} at ${new Date().toLocaleString()}`,
-            parseMode: 'html',
-          });
+          try {
+            await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
+            client.sendMessage(sender, {
+              message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
+              parseMode: 'html',
+            });
+            needToUpdate = true;
+            channel.messageId = messageIds[0];
+          } catch (e) {
+            client.sendMessage(sender, {
+              message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
+              parseMode: 'html',
+            });
+          }
         }
       }
 
@@ -92,7 +105,7 @@ export default class MainController {
       }
     } else {
       client.sendMessage(sender, {
-        message: 'Store channel is empty.',
+        message: '🗑️ Store channel is empty.',
       });
     }
   }
