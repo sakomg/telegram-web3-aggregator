@@ -14,9 +14,9 @@ export default class MainController {
   }
 
   async launch() {
-    const botClientContainer = new TgClientAuth(this.config, 'BOT');
+    const botClientContainer = new TgClientAuth('BOT');
     await botClientContainer.start();
-    const userClientContainer = new TgClientAuth(this.config, 'USER');
+    const userClientContainer = new TgClientAuth('USER');
     await userClientContainer.start();
 
     const messageService = new MessageService(botClientContainer.client, userClientContainer.client);

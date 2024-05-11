@@ -11,10 +11,8 @@ const WHO_TO_SESSION = {
 export default class TgClientAuth {
   private readonly tgClient;
   private readonly who;
-  private readonly config;
 
-  constructor(config: any, who: StartAsWho) {
-    this.config = config;
+  constructor(who: StartAsWho) {
     this.who = who;
     const session = new StringSession(process.env[WHO_TO_SESSION[this.who]]);
     this.tgClient = new TelegramClient(session, Number(process.env.TELEGRAM_API_ID), process.env.TELEGRAM_API_HASH as string, {
