@@ -30,6 +30,10 @@ export default class MainController {
             console.log(`💥 /sub handler, message: ${message}`);
             this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
           }
+          if (message.startsWith('/rm')) {
+            console.log(`💥 /rm handler, message: ${message}`);
+            this.processRemoveChannel(botClientContainer.client, messageService, message, sender);
+          }
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
             setInterval(() => this.processStart(botClientContainer.client, messageService, sender), 10000);
@@ -108,6 +112,25 @@ export default class MainController {
         message: '🗑️ Store channel is empty.',
       });
     }
+  }
+
+  async processRemoveChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
+    const channelName = message?.split(' ')[1];
+    const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
+    const lastForwardedResult = storageChannelResult.messages[0];
+    const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
+    const channelNames = scrapChannels.map((item) => item.name);
+    let replyMessage = '';
+    if (channelNames.includes(channelName)) {
+      const newChannels = scrapChannels.filter((item) => item.name !== channelName);
+      const markdown = this.channelsToMarkdown(newChannels);
+      client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+      replyMessage = `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
+    } else {
+      replyMessage = `🤷 Channel <b>${channelName}</b> doesn't exist in the list.`;
+    }
+
+    await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
   }
 
   markdownToChannels(markdownContent: string) {
