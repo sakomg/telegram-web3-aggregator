@@ -45,7 +45,7 @@ export default class MainController {
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
-            await botClient.destroy();
+            await botClient.disconnect();
           }
         } catch (e) {
           console.log('❗❗❗ Error in handlers. Check it manually to resolve.');
