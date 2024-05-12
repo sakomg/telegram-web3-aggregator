@@ -47,8 +47,6 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
-
-    console.log(userClientContainer.client.session.save());
   }
 
   async processTranscribeAudio(client: TelegramClient, message: string, sender: any) {
