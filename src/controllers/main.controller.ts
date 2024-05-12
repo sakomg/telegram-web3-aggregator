@@ -3,6 +3,7 @@ import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Entity } from 'telegram/define';
 import TgClientAuth from '../auth/main.auth';
 import MessageService from '../services/message.service';
+import { delay } from '../utils/main.utils';
 
 export default class MainController {
   private readonly config: any;
@@ -102,6 +103,7 @@ export default class MainController {
       const lastForwardedResult = storageChannelResult.messages[0];
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
+        await delay(1000);
         const result = await messageService.getMessagesHistory(channel.name, 1);
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
