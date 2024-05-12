@@ -27,7 +27,7 @@ export default class MainController {
         const message = messageWrapper.message;
         try {
           if (message.startsWith('/transcribe')) {
-            console.log(`💥 /trans handler, message: ${message}`);
+            console.log(`💥 /transcribe handler, message: ${message}`);
             this.processTranscribeAudio(userClientContainer.client, message, sender);
           }
           if (message.startsWith('/sub')) {
