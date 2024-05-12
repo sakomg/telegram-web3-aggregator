@@ -43,6 +43,10 @@ export default class MainController {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
             setInterval(() => this.processStart(botClient, messageService, sender), 10000);
           }
+          if (message.startsWith('/stop')) {
+            console.log(`💥 /stop handler`);
+            await botClient.destroy();
+          }
         } catch (e) {
           console.log('❗❗❗ Error in handlers. Check it manually to resolve.');
         }
