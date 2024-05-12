@@ -15,12 +15,12 @@ export default class MainController {
 
   async launch() {
     const botClientContainer = new TgClientAuth('BOT');
-    await botClientContainer.start();
+    const botClient = await botClientContainer.start();
     const userClientContainer = new TgClientAuth('USER');
-    await userClientContainer.start();
+    const userClient = await userClientContainer.start();
 
-    const messageService = new MessageService(botClientContainer.client, userClientContainer.client);
-    botClientContainer.client.addEventHandler(async (event: NewMessageEvent) => {
+    const messageService = new MessageService(botClient, userClient);
+    botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
         const sender = await messageWrapper.getSender();
@@ -28,19 +28,19 @@ export default class MainController {
         try {
           if (message.startsWith('/transcribe')) {
             console.log(`💥 /transcribe handler, message: ${message}`);
-            this.processTranscribeAudio(userClientContainer.client, message, sender);
+            this.processTranscribeAudio(botClient, userClient, message, sender);
           }
           if (message.startsWith('/sub')) {
             console.log(`💥 /sub handler, message: ${message}`);
-            this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
+            this.processSubscriptionChannel(botClient, messageService, message, sender);
           }
           if (message.startsWith('/rm')) {
             console.log(`💥 /rm handler, message: ${message}`);
-            this.processRemoveChannel(botClientContainer.client, messageService, message, sender);
+            this.processRemoveChannel(botClient, messageService, message, sender);
           }
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
-            setInterval(() => this.processStart(botClientContainer.client, messageService, sender), 10000);
+            setInterval(() => this.processStart(botClient, messageService, sender), 10000);
           }
         } catch (e) {
           console.log('❗❗❗ Error in handlers. Check it manually to resolve.');
@@ -49,18 +49,18 @@ export default class MainController {
     }, new NewMessage({}));
   }
 
-  async processTranscribeAudio(client: TelegramClient, message: string, sender: any) {
+  async processTranscribeAudio(botClient: TelegramClient, userClient: TelegramClient, message: string, sender: any) {
     const msgId = message?.split(' ')[1];
     try {
-      const result = await client.invoke(
+      const result = await userClient.invoke(
         new Api.messages.TranscribeAudio({
           peer: this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'),
           msgId: parseInt(msgId),
         }),
       );
-      await client.sendMessage(sender, { message: result.text, parseMode: 'html' });
+      await botClient.sendMessage(sender, { message: result.text, parseMode: 'html' });
     } catch (e) {
-      await client.sendMessage(sender, { message: JSON.stringify(e) });
+      await botClient.sendMessage(sender, { message: JSON.stringify(e) });
     }
   }
 

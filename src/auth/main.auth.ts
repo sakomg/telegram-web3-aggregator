@@ -20,16 +20,14 @@ export default class TgClientAuth {
     });
   }
 
-  get client() {
-    return this.tgClient;
-  }
-
   async start() {
     if (this.who == 'BOT') {
       await this.startAsBot(process.env.TELEGRAM_TOKEN as string);
     } else if (this.who == 'USER') {
       await this.startAsUser(process.env.TELEGRAM_USER_PHONE as string);
     }
+
+    return this.tgClient;
   }
 
   async startAsUser(phoneNumber: string) {
