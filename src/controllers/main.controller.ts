@@ -1,4 +1,4 @@
-import { TelegramClient } from 'telegram';
+import { Api, TelegramClient } from 'telegram';
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Entity } from 'telegram/define';
 import TgClientAuth from '../auth/main.auth';
@@ -26,6 +26,10 @@ export default class MainController {
         const sender = await messageWrapper.getSender();
         const message = messageWrapper.message;
         try {
+          if (message.startsWith('/trans')) {
+            console.log(`💥 /trans handler, message: ${message}`);
+            this.processTranscribeAudio(userClientContainer.client, message, sender);
+          }
           if (message.startsWith('/sub')) {
             console.log(`💥 /sub handler, message: ${message}`);
             this.processSubscriptionChannel(botClientContainer.client, messageService, message, sender);
@@ -43,6 +47,16 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
+  }
+
+  async processTranscribeAudio(client: TelegramClient, message: string, sender: any) {
+    const result = await client.invoke(
+      new Api.messages.TranscribeAudio({
+        peer: '@web3_main',
+        msgId: 280,
+      }),
+    );
+    console.log(result);
   }
 
   async processSubscriptionChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
