@@ -26,7 +26,7 @@ export default class MainController {
         const sender = await messageWrapper.getSender();
         const message = messageWrapper.message;
         try {
-          if (message.startsWith('/trans')) {
+          if (message.startsWith('/transcribe')) {
             console.log(`💥 /trans handler, message: ${message}`);
             this.processTranscribeAudio(userClientContainer.client, message, sender);
           }
@@ -47,16 +47,23 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
+
+    console.log(userClientContainer.client.session.save());
   }
 
   async processTranscribeAudio(client: TelegramClient, message: string, sender: any) {
-    const result = await client.invoke(
-      new Api.messages.TranscribeAudio({
-        peer: '@web3_main',
-        msgId: 280,
-      }),
-    );
-    console.log(result);
+    const msgId = message?.split(' ')[1];
+    try {
+      const result = await client.invoke(
+        new Api.messages.TranscribeAudio({
+          peer: this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'),
+          msgId: parseInt(msgId),
+        }),
+      );
+      await client.sendMessage(sender, { message: result.text, parseMode: 'html' });
+    } catch (e) {
+      await client.sendMessage(sender, { message: JSON.stringify(e) });
+    }
   }
 
   async processSubscriptionChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
