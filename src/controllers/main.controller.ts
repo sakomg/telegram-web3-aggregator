@@ -125,7 +125,9 @@ export default class MainController {
       }
 
       if (needToUpdate) {
+        console.log('scrapChannels:', scrapChannels);
         const markdown = this.channelsToMarkdown(scrapChannels);
+        console.log('markdown:', markdown);
         client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
       }
     } else {
