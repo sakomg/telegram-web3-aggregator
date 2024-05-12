@@ -107,7 +107,6 @@ export default class MainController {
       const lastForwardedResult = storageChannelResult.messages[0];
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
-        await delay(1000);
         const result = await messageService.getMessagesHistory(channel.name, 1);
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
