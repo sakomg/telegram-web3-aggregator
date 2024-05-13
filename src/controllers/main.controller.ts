@@ -41,11 +41,8 @@ export default class MainController {
         try {
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
+            botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
             intervalId = setInterval(() => {
-              botClient.sendMessage(sender, {
-                message: `🎬 Started.`,
-                parseMode: 'html',
-              });
               this.processStart(botClient, messageService, sender);
             }, 30000);
           }
