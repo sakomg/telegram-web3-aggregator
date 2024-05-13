@@ -3,7 +3,6 @@ import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Entity } from 'telegram/define';
 import TgClientAuth from '../auth/main.auth';
 import MessageService from '../services/message.service';
-import { delay } from '../utils/main.utils';
 
 export default class MainController {
   private readonly config: any;
@@ -20,12 +19,29 @@ export default class MainController {
     const userClientContainer = new TgClientAuth('USER');
     const userClient = await userClientContainer.start();
 
+    const result = await botClient.invoke(
+      new Api.bots.SetBotCommands({
+        commands: [
+          new Api.BotCommand({ command: '/start', description: 'To start post forwarding [Example: </start>]' }),
+          new Api.BotCommand({ command: '/sub', description: 'To add channel to track list [Example: /sub <@channel_name>]' }),
+          new Api.BotCommand({ command: '/rm', description: 'To remove channel from track list [Example: /rm <@channel_name>]' }),
+          new Api.BotCommand({
+            command: '/transcribe',
+            description: 'To transcribe audio message to text [Example: /transcribe <messageId>]',
+          }),
+          new Api.BotCommand({ command: '/stop', description: 'To stop post forwarding [Example: /stop]' }),
+        ],
+      }),
+    );
+    console.log(result); // prints the result
+
     const messageService = new MessageService(botClient, userClient);
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
         const sender = await messageWrapper.getSender();
         const message = messageWrapper.message;
+        let intervalId: NodeJS.Timeout | undefined;
         try {
           if (message.startsWith('/transcribe')) {
             console.log(`💥 /transcribe handler, message: ${message}`);
@@ -41,10 +57,11 @@ export default class MainController {
           }
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
-            setInterval(() => this.processStart(botClient, messageService, sender), 10000);
+            intervalId = setInterval(() => this.processStart(botClient, messageService, sender), 10000);
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
+            if (intervalId) clearInterval(intervalId);
             await botClient.disconnect();
           }
         } catch (e) {
