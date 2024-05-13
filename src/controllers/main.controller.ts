@@ -41,10 +41,8 @@ export default class MainController {
         try {
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
-            botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
-            intervalId = setInterval(() => {
-              this.processStart(botClient, messageService, sender);
-            }, 30000);
+            await botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
+            await this.startTimer(botClient, messageService, sender);
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
@@ -71,6 +69,76 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
+
+    console.log('user', userClient.session.save());
+    console.log('bot', botClient.session.save());
+  }
+
+  async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
+    const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
+    if (storageChannelResult.messages?.length) {
+      let needToUpdate = false;
+      const lastForwardedResult = storageChannelResult.messages[0];
+      const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
+      for (const channel of scrapChannels) {
+        const result = await messageService.getMessagesHistory(channel.name, 1);
+        const messageIds = result?.messages.map((item: any) => item.id).toSorted();
+        if (channel.messageId != messageIds[0]) {
+          try {
+            await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
+            client.sendMessage(sender, {
+              message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
+              parseMode: 'html',
+            });
+            needToUpdate = true;
+            channel.messageId = messageIds[0];
+          } catch (e) {
+            client.sendMessage(sender, {
+              message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
+              parseMode: 'html',
+            });
+          }
+        }
+      }
+
+      if (needToUpdate) {
+        const markdown = this.channelsToMarkdown(scrapChannels);
+        console.log('markdown:', markdown);
+        client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+      }
+    } else {
+      client.sendMessage(sender, {
+        message: '🗑️ Store channel is empty.',
+      });
+    }
+
+    await this.startTimer(client, messageService, sender);
+  }
+
+  async startTimer(client: TelegramClient, messageService: MessageService, sender: any) {
+    try {
+      const sentMessage = await client.sendMessage(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), {
+        message: `🔄 Sync in 30 seconds...`,
+        parseMode: 'html',
+      });
+
+      let remainingTime = 30;
+      const intervalId = setInterval(async () => {
+        remainingTime -= 5;
+        if (remainingTime > 0) {
+          client.editMessage(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), {
+            message: sentMessage.id,
+            text: `🔄 Sync in ${remainingTime} seconds...`,
+          });
+        } else {
+          clearInterval(intervalId);
+          await client.deleteMessages(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [sentMessage.id], { revoke: true });
+          await this.processStart(client, messageService, sender);
+        }
+      }, 5000);
+    } catch (error) {
+      console.error('Error starting timer:', error);
+    }
   }
 
   async processTranscribeAudio(botClient: TelegramClient, userClient: TelegramClient, message: string, sender: any) {
@@ -118,45 +186,6 @@ export default class MainController {
     await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
   }
 
-  async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
-    const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
-    if (storageChannelResult.messages?.length) {
-      let needToUpdate = false;
-      const lastForwardedResult = storageChannelResult.messages[0];
-      const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
-      for (const channel of scrapChannels) {
-        const result = await messageService.getMessagesHistory(channel.name, 1);
-        const messageIds = result?.messages.map((item: any) => item.id).toSorted();
-        if (channel.messageId != messageIds[0]) {
-          try {
-            await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
-            client.sendMessage(sender, {
-              message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
-              parseMode: 'html',
-            });
-            needToUpdate = true;
-            channel.messageId = messageIds[0];
-          } catch (e) {
-            client.sendMessage(sender, {
-              message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
-              parseMode: 'html',
-            });
-          }
-        }
-      }
-
-      if (needToUpdate) {
-        const markdown = this.channelsToMarkdown(scrapChannels);
-        console.log('markdown:', markdown);
-        client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
-      }
-    } else {
-      client.sendMessage(sender, {
-        message: '🗑️ Store channel is empty.',
-      });
-    }
-  }
-
   async processRemoveChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
     const channelName = message?.split(' ')[1];
     const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
@@ -186,6 +215,7 @@ export default class MainController {
 
     bot.sendMessage(sender, { message, parseMode: 'html' });
   }
+
   markdownToChannels(markdownContent: string) {
     const channels: Array<any> = [];
     const rows = markdownContent.trim().split('\n').slice(2);
