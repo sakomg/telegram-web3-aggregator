@@ -19,50 +19,55 @@ export default class MainController {
     const userClientContainer = new TgClientAuth('USER');
     const userClient = await userClientContainer.start();
 
-    const result = await botClient.invoke(
+    await botClient.invoke(
       new Api.bots.SetBotCommands({
+        scope: new Api.BotCommandScopeDefault(),
+        langCode: '',
         commands: [
-          new Api.BotCommand({ command: '/start', description: 'To start post forwarding [Example: </start>]' }),
-          new Api.BotCommand({ command: '/sub', description: 'To add channel to track list [Example: /sub <@channel_name>]' }),
-          new Api.BotCommand({ command: '/rm', description: 'To remove channel from track list [Example: /rm <@channel_name>]' }),
-          new Api.BotCommand({
-            command: '/transcribe',
-            description: 'To transcribe audio message to text [Example: /transcribe <messageId>]',
-          }),
-          new Api.BotCommand({ command: '/stop', description: 'To stop post forwarding [Example: /stop]' }),
+          new Api.BotCommand({ command: 'start', description: 'To start post forwarding.' }),
+          new Api.BotCommand({ command: 'commands', description: 'To show all available commands.' }),
+          new Api.BotCommand({ command: 'stop', description: 'To stop post forwarding.' }),
         ],
       }),
     );
-    console.log(result); // prints the result
 
     const messageService = new MessageService(botClient, userClient);
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
-        const sender = await messageWrapper.getSender();
-        const message = messageWrapper.message;
+        const sender: any = await messageWrapper.getSender();
+        const message: string = messageWrapper.message;
         let intervalId: NodeJS.Timeout | undefined;
         try {
-          if (message.startsWith('/transcribe')) {
-            console.log(`💥 /transcribe handler, message: ${message}`);
-            this.processTranscribeAudio(botClient, userClient, message, sender);
-          }
-          if (message.startsWith('/sub')) {
-            console.log(`💥 /sub handler, message: ${message}`);
-            this.processSubscriptionChannel(botClient, messageService, message, sender);
-          }
-          if (message.startsWith('/rm')) {
-            console.log(`💥 /rm handler, message: ${message}`);
-            this.processRemoveChannel(botClient, messageService, message, sender);
-          }
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
-            intervalId = setInterval(() => this.processStart(botClient, messageService, sender), 10000);
+            intervalId = setInterval(() => {
+              botClient.sendMessage(sender, {
+                message: `🎬 Started.`,
+                parseMode: 'html',
+              });
+              this.processStart(botClient, messageService, sender);
+            }, 30000);
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
             if (intervalId) clearInterval(intervalId);
-            await botClient.disconnect();
+          }
+          if (message.startsWith('/transcribe')) {
+            console.log(`💥 /transcribe handler`);
+            this.processTranscribeAudio(botClient, userClient, message, sender);
+          }
+          if (message.startsWith('/sub')) {
+            console.log(`💥 /sub handler`);
+            this.processSubscriptionChannel(botClient, messageService, message, sender);
+          }
+          if (message.startsWith('/rm')) {
+            console.log(`💥 /rm handler`);
+            this.processRemoveChannel(botClient, messageService, message, sender);
+          }
+          if (message.startsWith('/commands')) {
+            console.log(`💥 /commands handler`);
+            this.sendCommandsList(botClient, sender);
           }
         } catch (e) {
           console.log('❗❗❗ Error in handlers. Check it manually to resolve.');
@@ -101,7 +106,6 @@ export default class MainController {
             messageId: 0,
           });
           const markdown = this.channelsToMarkdown(scrapChannels);
-
           client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
           replyMessage = `🔥 Channel <b>${channelName}</b> has been added to list.`;
         } else {
@@ -145,7 +149,6 @@ export default class MainController {
       }
 
       if (needToUpdate) {
-        console.log('scrapChannels:', scrapChannels);
         const markdown = this.channelsToMarkdown(scrapChannels);
         console.log('markdown:', markdown);
         client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
@@ -176,6 +179,16 @@ export default class MainController {
     await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
   }
 
+  sendCommandsList(bot: TelegramClient, sender: any) {
+    const commands = [
+      { command: 'sub', description: 'to add channel to track list. /sub <@channel_name>' },
+      { command: 'rm', description: 'to remove channel from track list. /rm <@channel_name>' },
+      { command: 'transcribe', description: 'to transcribe audio to text. /transcribe <messageId>' },
+    ];
+    const message = commands.map((cmd) => `<b style='color:"blue"'>${cmd.command}</b>: ${cmd.description}`).join('\n');
+
+    bot.sendMessage(sender, { message, parseMode: 'html' });
+  }
   markdownToChannels(markdownContent: string) {
     const channels: Array<any> = [];
     const rows = markdownContent.trim().split('\n').slice(2);
