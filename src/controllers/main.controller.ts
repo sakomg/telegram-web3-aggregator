@@ -83,14 +83,14 @@ export default class MainController {
         if (channel.messageId != messageIds[0]) {
           try {
             await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
-            client.sendMessage(sender, {
+            await client.sendMessage(sender, {
               message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
               parseMode: 'html',
             });
             needToUpdate = true;
             channel.messageId = messageIds[0];
           } catch (e) {
-            client.sendMessage(sender, {
+            await client.sendMessage(sender, {
               message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
               parseMode: 'html',
             });
@@ -101,10 +101,10 @@ export default class MainController {
       if (needToUpdate) {
         const markdown = this.channelsToMarkdown(scrapChannels);
         console.log('markdown:', markdown);
-        client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+        await client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
       }
     } else {
-      client.sendMessage(sender, {
+      await client.sendMessage(sender, {
         message: '🗑️ Store channel is empty.',
       });
     }
