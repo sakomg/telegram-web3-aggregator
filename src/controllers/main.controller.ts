@@ -69,9 +69,6 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
-
-    console.log('user', userClient.session.save());
-    console.log('bot', botClient.session.save());
   }
 
   async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
@@ -117,7 +114,7 @@ export default class MainController {
 
   async startTimer(client: TelegramClient, messageService: MessageService, sender: any) {
     try {
-      const sentMessage = await client.sendMessage(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), {
+      const sentMessage = await client.sendMessage(sender, {
         message: `🔄 Sync in 30 seconds...`,
         parseMode: 'html',
       });
@@ -126,13 +123,13 @@ export default class MainController {
       const intervalId = setInterval(async () => {
         remainingTime -= 5;
         if (remainingTime > 0) {
-          client.editMessage(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), {
+          client.editMessage(sender, {
             message: sentMessage.id,
             text: `🔄 Sync in ${remainingTime} seconds...`,
           });
         } else {
           clearInterval(intervalId);
-          await client.deleteMessages(this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [sentMessage.id], { revoke: true });
+          await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
           await this.processStart(client, messageService, sender);
         }
       }, 5000);
