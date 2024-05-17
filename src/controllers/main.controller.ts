@@ -69,6 +69,9 @@ export default class MainController {
         }
       }
     }, new NewMessage({}));
+
+    // console.log('b:', botClient.session.save());
+    // console.log('u:', userClient.session.save());
   }
 
   async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
