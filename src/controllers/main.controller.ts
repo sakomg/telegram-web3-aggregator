@@ -87,13 +87,14 @@ export default class MainController {
               message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
               parseMode: 'html',
             });
-            needToUpdate = true;
-            channel.messageId = messageIds[0];
           } catch (e) {
             await client.sendMessage(sender, {
               message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
               parseMode: 'html',
             });
+          } finally {
+            needToUpdate = true;
+            channel.messageId = messageIds[0];
           }
         }
       }
@@ -121,7 +122,7 @@ export default class MainController {
 
       let remainingTime = 30;
       const intervalId = setInterval(async () => {
-        remainingTime -= 5;
+        remainingTime -= 10;
         if (remainingTime > 0) {
           client.editMessage(sender, {
             message: sentMessage.id,
@@ -132,7 +133,7 @@ export default class MainController {
           await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
           await this.processStart(client, messageService, sender);
         }
-      }, 5000);
+      }, 10000);
     } catch (error) {
       console.error('Error starting timer:', error);
     }
@@ -208,7 +209,7 @@ export default class MainController {
       { command: 'rm', description: 'to remove channel from track list. /rm <@channel_name>' },
       { command: 'transcribe', description: 'to transcribe audio to text. /transcribe <messageId>' },
     ];
-    const message = commands.map((cmd) => `<b style='color:"blue"'>${cmd.command}</b>: ${cmd.description}`).join('\n');
+    const message = commands.map((cmd) => `<b>${cmd.command}</b>: <i>${cmd.description}</i>`).join('\n');
 
     bot.sendMessage(sender, { message, parseMode: 'html' });
   }
