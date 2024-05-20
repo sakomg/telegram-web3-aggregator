@@ -82,9 +82,12 @@ export default class MainController {
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
         const result = await messageService.getMessagesHistory(channel.name, 1);
+        console.log(`${channel} ===> ${result}`);
+
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
           try {
+            // TODO: add message filtering
             await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
             await client.sendMessage(sender, {
               message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
