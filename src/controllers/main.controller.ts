@@ -82,7 +82,7 @@ export default class MainController {
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
         const result = await messageService.getMessagesHistory(channel.name, 1);
-        console.log(`${channel} ===> ${result}`);
+        console.log(`${channel.name} ===> ${JSON.stringify(result, null, 2)}`);
 
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
