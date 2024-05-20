@@ -7,6 +7,7 @@ import MessageService from '../services/message.service';
 export default class MainController {
   private readonly config: any;
   private readonly storageChannel: string;
+  private startIntervalId: NodeJS.Timeout | undefined;
 
   constructor(config: any) {
     this.config = config;
@@ -37,16 +38,24 @@ export default class MainController {
         const messageWrapper = event.message;
         const sender: any = await messageWrapper.getSender();
         const message: string = messageWrapper.message;
-        let intervalId: NodeJS.Timeout | undefined;
         try {
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
+            this.clearTimer();
             await botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
             await this.startTimer(botClient, messageService, sender);
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
-            if (intervalId) clearInterval(intervalId);
+            this.clearTimer();
+          }
+          if (message.startsWith('/timer')) {
+            await botClient.sendMessage(sender, {
+              message: this.startIntervalId
+                ? JSON.stringify(this.startIntervalId, null, 2)
+                : 'call /start command to have interval',
+              parseMode: 'html',
+            });
           }
           if (message.startsWith('/transcribe')) {
             console.log(`💥 /transcribe handler`);
@@ -82,7 +91,7 @@ export default class MainController {
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
         const result = await messageService.getMessagesHistory(channel.name, 1);
-        console.log(`${channel.name} ===> ${JSON.stringify(result, null, 2)}`);
+        console.log(`${channel.name} ===> ${result.messages[0]}`);
 
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
@@ -127,7 +136,7 @@ export default class MainController {
       });
 
       let remainingTime = 30;
-      const intervalId = setInterval(async () => {
+      this.startIntervalId = setInterval(async () => {
         remainingTime -= 10;
         if (remainingTime > 0) {
           client.editMessage(sender, {
@@ -135,7 +144,7 @@ export default class MainController {
             text: `🔄 Sync in ${remainingTime} seconds...`,
           });
         } else {
-          clearInterval(intervalId);
+          clearInterval(this.startIntervalId);
           await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
           await this.processStart(client, messageService, sender);
         }
@@ -143,6 +152,10 @@ export default class MainController {
     } catch (error) {
       console.error('Error starting timer:', error);
     }
+  }
+
+  clearTimer() {
+    if (this.startIntervalId) clearInterval(this.startIntervalId);
   }
 
   async processTranscribeAudio(botClient: TelegramClient, userClient: TelegramClient, message: string, sender: any) {
