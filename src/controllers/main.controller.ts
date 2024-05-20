@@ -51,10 +51,7 @@ export default class MainController {
           }
           if (message.startsWith('/timer')) {
             await botClient.sendMessage(sender, {
-              message: this.startIntervalId
-                ? JSON.stringify(this.startIntervalId, null, 2)
-                : 'call /start command to have interval',
-              parseMode: 'html',
+              message: this.startIntervalId ? 'it is working' : 'call /start command to have interval',
             });
           }
           if (message.startsWith('/transcribe')) {
@@ -91,7 +88,7 @@ export default class MainController {
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
       for (const channel of scrapChannels) {
         const result = await messageService.getMessagesHistory(channel.name, 1);
-        console.log(`${channel.name} ===> ${result.messages[0]}`);
+        console.log(`${channel.name} ===>`, result.messages[0]);
 
         const messageIds = result?.messages.map((item: any) => item.id).toSorted();
         if (channel.messageId != messageIds[0]) {
