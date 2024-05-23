@@ -6,20 +6,20 @@
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
-    "start": "npm run build && node build/main.js"
+    "start": "node build/main.js"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
   "license": "ISC",
   "dependencies": {
     "config": "^3.3.11",
     "dotenv": "^16.4.5",
-    "telegram": "^2.20.15",
-    "rimraf": "^5.0.5"
+    "telegram": "^2.20.15"
   },
   "devDependencies": {
     "@types/config": "^3.3.4",
     "@types/node": "^20.12.10",
     "nodemon": "^3.1.0",
+    "rimraf": "^5.0.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }
