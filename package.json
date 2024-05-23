@@ -6,7 +6,7 @@
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
-    "start": "pm2 start build/main.js"
+    "start": "node build/main.js"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
   "license": "ISC",
