@@ -6,11 +6,12 @@
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
-    "start": "node build/main.js"
+    "start": "pm2 start build/main.js"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
   "license": "ISC",
   "dependencies": {
+    "pm2": "^5.3.1",
     "config": "^3.3.11",
     "dotenv": "^16.4.5",
     "telegram": "^2.20.15"

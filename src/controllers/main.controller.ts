@@ -221,9 +221,9 @@ export default class MainController {
 
   sendCommandsList(bot: TelegramClient, sender: any) {
     const commands = [
-      { command: 'sub', description: 'to add channel to track list. /sub <@channel_name>' },
-      { command: 'rm', description: 'to remove channel from track list. /rm <@channel_name>' },
-      { command: 'transcribe', description: 'to transcribe audio to text. /transcribe <messageId>' },
+      { command: 'sub', description: 'to add channel to track list. /sub @channel_name' },
+      { command: 'rm', description: 'to remove channel from track list. /rm @channel_name' },
+      { command: 'transcribe', description: 'to transcribe audio to text. /transcribe messageId' },
     ];
     const message = commands.map((cmd) => `<b>${cmd.command}</b>: <i>${cmd.description}</i>`).join('\n');
 
