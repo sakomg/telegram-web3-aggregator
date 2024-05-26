@@ -35,7 +35,7 @@ export default class MainController {
     const messageService = new MessageService(botClient, userClient);
 
     const userInfo = await userClient.getMe();
-    await this.startTimer(botClient, messageService, userInfo.id);
+    await this.startTimer(botClient, messageService, userInfo);
 
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
