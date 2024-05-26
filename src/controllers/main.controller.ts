@@ -34,10 +34,13 @@ export default class MainController {
 
     const messageService = new MessageService(botClient, userClient);
 
-    const botEntity = await botClient.getEntity(6588961025);
-    console.log(botEntity);
-
-    await this.startTimer(botClient, messageService, botEntity);
+    await botClient.invoke(
+      new Api.messages.SendMessage({
+        peer: '@collector_web3_bot',
+        message: 'hi.',
+        sendAs: '@mcdhunter',
+      }),
+    );
 
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
