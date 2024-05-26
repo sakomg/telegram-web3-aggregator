@@ -33,6 +33,10 @@ export default class MainController {
     );
 
     const messageService = new MessageService(botClient, userClient);
+
+    const botInfo = await botClient.getMe();
+    await this.startTimer(botClient, messageService, botInfo.id);
+
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
@@ -141,7 +145,7 @@ export default class MainController {
             text: `🔄 Sync in ${remainingTime} seconds...`,
           });
         } else {
-          clearInterval(this.startIntervalId);
+          this.clearTimer();
           await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
           await this.processStart(client, messageService, sender);
         }
