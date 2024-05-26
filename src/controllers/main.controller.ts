@@ -32,10 +32,10 @@ export default class MainController {
       }),
     );
 
-    await userClient.sendMessage('me', { message: '🔄 Bot refreshed. You can start forwarding.' });
-    await userClient.sendMessage('574616941', { message: '🔄 Bot refreshed. You can start forwarding.' });
-
     const messageService = new MessageService(botClient, userClient);
+
+    await this.startTimer(botClient, messageService, 'me');
+
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
