@@ -171,30 +171,35 @@ export default class MainController {
   }
 
   async processSubscriptionChannel(client: TelegramClient, messageService: MessageService, message: string, sender: any) {
-    const channelName = message?.split(' ')[1];
+    const rawChannelName = message?.split(' ')[1];
     const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
     const lastForwardedResult = storageChannelResult.messages[0];
     const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
     let replyMessage = '';
-    try {
-      const entity: Entity = await client.getEntity(channelName);
-      if (entity.className === 'Channel') {
-        if (!scrapChannels.map((item) => item.name).includes(channelName)) {
-          scrapChannels.push({
-            name: channelName,
-            messageId: 0,
-          });
-          const markdown = this.channelsToMarkdown(scrapChannels);
-          client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
-          replyMessage = `🔥 Channel <b>${channelName}</b> has been added to list.`;
+    const channelName: string | null = this.clearChannelName(rawChannelName);
+    if (channelName == null) {
+      replyMessage = 'Invalid chanel username.';
+    } else {
+      try {
+        const entity: Entity = await client.getEntity(channelName);
+        if (entity.className === 'Channel') {
+          if (!scrapChannels.map((item) => item.name).includes(channelName)) {
+            scrapChannels.push({
+              name: channelName,
+              messageId: 0,
+            });
+            const markdown = this.channelsToMarkdown(scrapChannels);
+            client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+            replyMessage = `🔥 Channel <b>${channelName}</b> has been added to list.`;
+          } else {
+            replyMessage = `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
+          }
         } else {
-          replyMessage = `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
+          replyMessage = `⚠️ Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
         }
-      } else {
-        replyMessage = `⚠️ Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
+      } catch (e) {
+        replyMessage = `😕 Channel <b>${channelName}</b> doesn't exist, check the username.`;
       }
-    } catch (e) {
-      replyMessage = `😕 Channel <b>${channelName}</b> doesn't exist, check the username.`;
     }
 
     await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
@@ -256,4 +261,12 @@ export default class MainController {
     });
     return markdown;
   }
+
+  clearChannelName = (url: string): string | null => {
+    if (typeof url !== 'string') return null;
+    const trimmedUrl = url.trim();
+    if (trimmedUrl.startsWith('https://t.me/')) return `@${trimmedUrl.slice(13)}`;
+    if (trimmedUrl.startsWith('@')) return trimmedUrl;
+    return `@${trimmedUrl}`;
+  };
 }
