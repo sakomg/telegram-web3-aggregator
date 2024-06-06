@@ -123,7 +123,7 @@ export default class MainController {
             });
           } finally {
             needToUpdate = true;
-            channel.messageId = newMessages[0];
+            channel.messageId = newMessages[newMessages.length - 1];
           }
         }
 
