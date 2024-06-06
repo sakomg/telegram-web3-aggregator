@@ -102,7 +102,7 @@ export default class MainController {
         const messages = result?.messages;
 
         const newMessages = messageFilterService
-          .filterAds(messages)
+          .filterGarbage(messages)
           .filter((msg: any) => msg.id > channel.messageId)
           .map((msg: any) => msg.id)
           .sort((a: number, b: number) => a - b);
