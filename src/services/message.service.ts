@@ -30,6 +30,7 @@ export default class MessageService {
           fromPeer: normalizeUsername(fromChannel),
           toPeer: normalizeUsername(toChannel),
           dropMediaCaptions: false,
+          noforwards: true,
         }),
       );
     } catch (e) {

@@ -1,17 +1,21 @@
 import { Api, TelegramClient } from 'telegram';
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Entity } from 'telegram/define';
+import { delay } from '../utils/main.utils';
 import TgClientAuth from '../auth/main.auth';
 import MessageService from '../services/message.service';
+import MessageFilterService from '../services/filter.service';
 
 export default class MainController {
   private readonly config: any;
   private readonly storageChannel: string;
   private startIntervalId: NodeJS.Timeout | undefined;
+  private messageFilterService: MessageFilterService;
 
   constructor(config: any) {
     this.config = config;
     this.storageChannel = this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME');
+    this.messageFilterService = new MessageFilterService();
   }
 
   async launch() {
@@ -33,6 +37,7 @@ export default class MainController {
     );
 
     const messageService = new MessageService(botClient, userClient);
+
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
@@ -43,7 +48,7 @@ export default class MainController {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
             this.clearTimer();
             await botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
-            await this.startTimer(botClient, messageService, sender);
+            await this.startTimer(botClient, messageService, sender, this.messageFilterService);
           }
           if (message.startsWith('/stop')) {
             console.log(`💥 /stop handler`);
@@ -80,35 +85,49 @@ export default class MainController {
     // console.log('u:', userClient.session.save());
   }
 
-  async processStart(client: TelegramClient, messageService: MessageService, sender: any) {
+  async processStart(
+    client: TelegramClient,
+    messageService: MessageService,
+    sender: any,
+    messageFilterService: MessageFilterService,
+  ) {
     const storageChannelResult = await messageService.getMessagesHistory(this.storageChannel, 1);
     if (storageChannelResult.messages?.length) {
       let needToUpdate = false;
       const lastForwardedResult = storageChannelResult.messages[0];
       const scrapChannels = this.markdownToChannels(lastForwardedResult.message);
-      for (const channel of scrapChannels) {
-        const result = await messageService.getMessagesHistory(channel.name, 1);
-        console.log(`${channel.name} ===>`, result.messages[0].id);
 
-        const messageIds = result?.messages.map((item: any) => item.id).toSorted();
-        if (channel.messageId != messageIds[0]) {
+      for (const channel of scrapChannels) {
+        const result = await messageService.getMessagesHistory(channel.name, 3);
+        const messages = result?.messages;
+
+        const newMessages = messageFilterService
+          .filterAds(messages)
+          .filter((msg: any) => msg.id > channel.messageId)
+          .map((msg: any) => msg.id)
+          .sort((a: number, b: number) => a - b);
+
+        console.log(`${channel.name} ===>`, newMessages);
+
+        if (newMessages.length > 0) {
           try {
-            // TODO: add message filtering
-            await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), messageIds);
+            await messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), newMessages);
             await client.sendMessage(sender, {
-              message: `✨ Message ${messageIds[0]} has been forwarded from ${channel.name}.`,
+              message: `✨ Messages ${newMessages.join(', ')} have been forwarded from ${channel.name}.`,
               parseMode: 'html',
             });
           } catch (e) {
             await client.sendMessage(sender, {
-              message: `🚩 Error in forwarding message ${messageIds[0]} from ${channel.name} channel.`,
+              message: `🚩 Error in forwarding messages ${newMessages.join(', ')} from ${channel.name} channel.`,
               parseMode: 'html',
             });
           } finally {
             needToUpdate = true;
-            channel.messageId = messageIds[0];
+            channel.messageId = newMessages[0];
           }
         }
+
+        await delay(500);
       }
 
       if (needToUpdate) {
@@ -122,19 +141,24 @@ export default class MainController {
       });
     }
 
-    await this.startTimer(client, messageService, sender);
+    await this.startTimer(client, messageService, sender, this.messageFilterService);
   }
 
-  async startTimer(client: TelegramClient, messageService: MessageService, sender: any) {
+  async startTimer(
+    client: TelegramClient,
+    messageService: MessageService,
+    sender: any,
+    messageFilterService: MessageFilterService,
+  ) {
     try {
       const sentMessage = await client.sendMessage(sender, {
-        message: `🔄 Sync in 30 seconds...`,
+        message: `🔄 Sync in 45 seconds...`,
         parseMode: 'html',
       });
 
-      let remainingTime = 30;
+      let remainingTime = 45;
       this.startIntervalId = setInterval(async () => {
-        remainingTime -= 10;
+        remainingTime -= 15;
         if (remainingTime > 0) {
           client.editMessage(sender, {
             message: sentMessage.id,
@@ -143,16 +167,19 @@ export default class MainController {
         } else {
           this.clearTimer();
           await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
-          await this.processStart(client, messageService, sender);
+          await this.processStart(client, messageService, sender, messageFilterService);
         }
-      }, 10000);
+      }, 15000);
     } catch (error) {
       console.error('Error starting timer:', error);
     }
   }
 
   clearTimer() {
-    if (this.startIntervalId) clearInterval(this.startIntervalId);
+    if (this.startIntervalId) {
+      clearInterval(this.startIntervalId);
+      this.startIntervalId = undefined;
+    }
   }
 
   async processTranscribeAudio(botClient: TelegramClient, userClient: TelegramClient, message: string, sender: any) {
