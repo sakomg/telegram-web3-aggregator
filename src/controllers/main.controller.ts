@@ -38,13 +38,15 @@ export default class MainController {
 
     const messageService = new MessageService(botClient, userClient);
 
+    const botEntity = await userClient.getEntity(this.config.get('TELEGRAM_BOT_USERNAME'));
+    console.log(`💥 initial start`);
+    userClient.sendMessage(botEntity, { message: '/start' });
+
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (event?.message?.message) {
         const messageWrapper = event.message;
         const sender: any = await messageWrapper.getSender();
         const message: string = messageWrapper.message;
-        console.log(`sender ${sender}, message ${message}`);
-        console.log('eventMessage', messageWrapper);
 
         try {
           if (message.startsWith('/start')) {
@@ -130,7 +132,7 @@ export default class MainController {
           }
         }
 
-        await delay(500);
+        await delay(666);
       }
 
       if (needToUpdate) {
