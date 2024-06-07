@@ -43,6 +43,9 @@ export default class MainController {
         const messageWrapper = event.message;
         const sender: any = await messageWrapper.getSender();
         const message: string = messageWrapper.message;
+        console.log(`sender ${sender}, message ${message}`);
+        console.log('eventMessage', messageWrapper);
+
         try {
           if (message.startsWith('/start')) {
             console.log(`💥 /start handler, execution time: ${new Date().toLocaleString()}`);
@@ -205,7 +208,7 @@ export default class MainController {
     let replyMessage = '';
     const channelName: string | null = this.clearChannelName(rawChannelName);
     if (channelName == null) {
-      replyMessage = 'Invalid chanel username.';
+      replyMessage = '❗ Invalid channel username.';
     } else {
       try {
         const entity: Entity = await client.getEntity(channelName);
