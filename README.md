@@ -28,11 +28,13 @@ If you would like to suggest a new channel to be added to the aggregation list, 
 
 I welcome contributions to enhance the bot's functionality and improve the content curation. To contribute, follow these steps:
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit them (`git commit -m 'add some feature'`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a pull request.
+1. Clone the repository: (`git clone https://github.com/sakomg/telegram-web3-aggregator.git`).
+2. Navigate into the project directory: (`cd telegram-web3-aggregator`).
+3. Copy .env.example to .env: (`npm run copy:env`).
+4. Create a new branch (`git checkout -b feature/your-feature`).
+5. Make your changes and commit them (`git commit -m 'add some feature'`).
+6. Push to the branch (`git push origin feature/your-feature`).
+7. Open a pull request.
 
 ## Feedback 💬
 

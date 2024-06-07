@@ -6,6 +6,7 @@
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
+    "copy:env": "cp .env.example .env",
     "start": "node build/main.js"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
