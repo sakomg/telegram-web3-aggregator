@@ -48,10 +48,6 @@ export class SyncService {
     }
   }
 
-  isSync() {
-    return !!this.startIntervalId;
-  }
-
   async #processStart(client: TelegramClient, sender: any) {
     const storageChannelResult = await this.messageService.getMessagesHistory(
       this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'),

@@ -1,13 +1,13 @@
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { CommandHandler } from '../types/command-handler.interface';
-import { CommandsCommand, RmCommand, StartCommand, StopCommand, SubCommand, TimerCommand, TranscribeCommand } from '../commands';
+import { CommandsCommand, RmCommand, StartCommand, StopCommand, SubCommand, SystemCommand, TranscribeCommand } from '../commands';
 import { MessageFilterService, MessageService, SyncService } from '../services';
 import TgClientAuth from '../auth/main.auth';
 
 const COMMANDS: Record<string, string> = {
   START: '/start',
   STOP: '/stop',
-  TIMER: '/timer',
+  SYSTEM: '/system',
   TRANSCRIBE: '/transcribe',
   SUB: '/sub',
   RM: '/rm',
@@ -41,7 +41,7 @@ export default class MainController {
     const commandHandlers: Record<string, CommandHandler> = {
       [COMMANDS.START]: new StartCommand(syncService),
       [COMMANDS.STOP]: new StopCommand(syncService),
-      [COMMANDS.TIMER]: new TimerCommand(syncService),
+      [COMMANDS.SYSTEM]: new SystemCommand(),
       [COMMANDS.TRANSCRIBE]: new TranscribeCommand(messageService, this.config),
       [COMMANDS.SUB]: new SubCommand(messageService, this.storageChannel),
       [COMMANDS.RM]: new RmCommand(messageService, this.storageChannel),
@@ -60,7 +60,7 @@ export default class MainController {
         if (command && commandHandlers[COMMANDS[command]]) {
           await commandHandlers[COMMANDS[command]].handle(botClient, sender, message);
         } else {
-          const response = '❌ Invalid command, please check and try again. Call /commands to view all commands.';
+          const response = '❌ Invalid command, please check and try again. \r\n\r\n💨 /commands to view all commands.';
           await botClient.sendMessage(sender, { message: response });
         }
       } catch (e) {
