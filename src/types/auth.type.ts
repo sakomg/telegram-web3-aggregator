@@ -1,3 +1,1 @@
-type StartAsWho = 'BOT' | 'USER';
-
-export { StartAsWho };
+export type StartAsWho = 'BOT' | 'USER';

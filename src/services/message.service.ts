@@ -2,7 +2,7 @@ import { TelegramClient } from 'telegram';
 import { Api } from 'telegram/tl';
 import { normalizeUsername } from '../utils/main.utils';
 
-export default class MessageService {
+export class MessageService {
   private readonly botClient;
   private readonly userClient;
 
@@ -36,5 +36,16 @@ export default class MessageService {
     } catch (e) {
       throw new Error(`❌ Can't forward messages from ${fromChannel} to ${toChannel}. ` + e);
     }
+  }
+
+  async transcribeAudio(toChannel: string, msgId: string) {
+    const result: any = await this.userClient.invoke(
+      new Api.messages.TranscribeAudio({
+        peer: toChannel,
+        msgId: parseInt(msgId),
+      }),
+    );
+
+    return result;
   }
 }

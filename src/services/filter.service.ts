@@ -1,4 +1,4 @@
-export default class MessageFilterService {
+export class MessageFilterService {
   private adKeywords: string[];
 
   constructor() {
