@@ -5,3 +5,4 @@ export { SubCommand } from './sub.command';
 export { RmCommand } from './rm.command';
 export { CommandsCommand } from './commands.command';
 export { SystemCommand } from './system.command';
+export { PinCommand } from './pin.command';

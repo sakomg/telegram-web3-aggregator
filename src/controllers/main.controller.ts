@@ -1,6 +1,15 @@
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { CommandHandler } from '../types/command-handler.interface';
-import { CommandsCommand, RmCommand, StartCommand, StopCommand, SubCommand, SystemCommand, TranscribeCommand } from '../commands';
+import {
+  CommandsCommand,
+  PinCommand,
+  RmCommand,
+  StartCommand,
+  StopCommand,
+  SubCommand,
+  SystemCommand,
+  TranscribeCommand,
+} from '../commands';
 import { MessageFilterService, MessageService, SyncService } from '../services';
 import TgClientAuth from '../auth/main.auth';
 
@@ -12,6 +21,7 @@ const COMMANDS: Record<string, string> = {
   SUB: '/sub',
   RM: '/rm',
   COMMANDS: '/commands',
+  PIN: '/pin',
 };
 
 export default class MainController {
@@ -34,7 +44,6 @@ export default class MainController {
     const syncService = new SyncService(this.config, messageService, messageFilterService);
 
     const botEntity = await userClient.getEntity(this.config.get('TELEGRAM_BOT_USERNAME'));
-
     console.log(`💥 initial start`);
     userClient.sendMessage(botEntity, { message: '/start' });
 
@@ -46,6 +55,7 @@ export default class MainController {
       [COMMANDS.SUB]: new SubCommand(messageService, this.storageChannel),
       [COMMANDS.RM]: new RmCommand(messageService, this.storageChannel),
       [COMMANDS.COMMANDS]: new CommandsCommand(COMMANDS),
+      [COMMANDS.PIN]: new PinCommand(messageService, this.config),
     };
 
     botClient.addEventHandler(async (event: NewMessageEvent) => {
