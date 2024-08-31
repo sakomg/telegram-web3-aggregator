@@ -62,12 +62,14 @@ export class SyncService {
     }
     if (storageChannelResult.messages?.length) {
       let needToUpdate = false;
+      let channelsWithGetMessageIssues: any[] = [];
       const lastForwardedResult = storageChannelResult.messages[0];
       const scrapChannels = markdownToChannels(lastForwardedResult.message);
 
       for (const channel of scrapChannels) {
         const result = await this.messageService.getMessagesHistory(channel.name, 3);
         if (result == null) {
+          channelsWithGetMessageIssues.push(channel);
           continue;
         }
         const messages = result?.messages;
@@ -103,6 +105,12 @@ export class SyncService {
         }
 
         await delay(666);
+      }
+
+      if (channelsWithGetMessageIssues.length) {
+        await client.sendMessage(sender, {
+          message: `Cannot extract messages from channels: ${channelsWithGetMessageIssues.join(', ')}`,
+        });
       }
 
       if (needToUpdate) {
