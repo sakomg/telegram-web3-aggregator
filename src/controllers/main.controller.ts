@@ -64,8 +64,14 @@ export default class MainController {
       try {
         const messageWrapper = event.message;
         const sender: any = await messageWrapper.getSender();
+        const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES');
+        if (!adminUsernames.includes(sender.username)) {
+          await botClient.sendMessage(sender, {
+            message: '🛑 You do not have permission to send messages. Please contact @saskakomegunov if you would like to add a channel to the pool or for any other requests/suggestions.'
+          });
+          return;
+        }
         const message: string = messageWrapper.message;
-
         const command = Object.keys(COMMANDS).find((key: string) => message.startsWith(COMMANDS[key]));
         if (command && commandHandlers[COMMANDS[command]]) {
           await commandHandlers[COMMANDS[command]].handle(botClient, sender, message);
