@@ -18,11 +18,11 @@ export class SyncService {
   async start(client: TelegramClient, sender: any) {
     try {
       const sentMessage = await client.sendMessage(sender, {
-        message: `🔄 Sync in 45 seconds...`,
+        message: `🔄 Sync in 60 seconds...`,
         parseMode: 'html',
       });
 
-      let remainingTime = 45;
+      let remainingTime = 60;
       this.startIntervalId = setInterval(async () => {
         remainingTime -= 15;
         if (remainingTime > 0) {
@@ -53,6 +53,13 @@ export class SyncService {
       this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'),
       1,
     );
+    if (storageChannelResult == null) {
+      await client.sendMessage(sender, {
+        message: `❗ Cannot extract storage channel messages.`,
+        parseMode: 'html',
+      });
+      return;
+    }
     if (storageChannelResult.messages?.length) {
       let needToUpdate = false;
       const lastForwardedResult = storageChannelResult.messages[0];
@@ -60,6 +67,9 @@ export class SyncService {
 
       for (const channel of scrapChannels) {
         const result = await this.messageService.getMessagesHistory(channel.name, 3);
+        if (result == null) {
+          continue;
+        }
         const messages = result?.messages;
 
         const newMessages = this.messageFilterService

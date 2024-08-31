@@ -12,12 +12,18 @@ export class MessageService {
   }
 
   async getMessagesHistory(channel: string, limit: number) {
-    const result: any = await this.userClient.invoke(
-      new Api.messages.GetHistory({
-        peer: normalizeUsername(channel),
-        limit: limit,
-      }),
-    );
+    let result: any = null;
+
+    try {
+      result = await this.userClient.invoke(
+        new Api.messages.GetHistory({
+          peer: normalizeUsername(channel),
+          limit: limit,
+        }),
+      );
+    } catch (e) {
+      console.log(e);
+    }
 
     return result;
   }
