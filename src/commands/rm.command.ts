@@ -18,20 +18,25 @@ export class RmCommand implements CommandHandler {
   }
 
   async processRemoveChannel(client: TelegramClient, message: string, sender: any) {
-    const rawChannelName = message?.split(' ')[1];
-    const storageChannelResult = await this.messageService.getMessagesHistory(this.storageChannel, 1);
-    const lastForwardedResult = storageChannelResult.messages[0];
-    const scrapChannels = markdownToChannels(lastForwardedResult.message);
-    const channelNames = scrapChannels.map((item) => item.name);
-    const channelName = clearChannelName(rawChannelName);
     let replyMessage = '';
-    if (channelNames.includes(channelName)) {
-      const newChannels = scrapChannels.filter((item) => item.name !== channelName);
-      const markdown = channelsToMarkdown(newChannels);
-      client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
-      replyMessage = `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
+    const rawChannelName = message?.split(' ')[1];
+    const { success, value } = await this.messageService.getMessagesHistory(this.storageChannel, 1);
+
+    if (success) {
+      const lastForwardedResult = value.messages[0];
+      const scrapChannels = markdownToChannels(lastForwardedResult.message);
+      const channelNames = scrapChannels.map((item) => item.name);
+      const channelName = clearChannelName(rawChannelName);
+      if (channelNames.includes(channelName)) {
+        const newChannels = scrapChannels.filter((item) => item.name !== channelName);
+        const markdown = channelsToMarkdown(newChannels);
+        client.editMessage(this.storageChannel, { message: lastForwardedResult.id, text: markdown });
+        replyMessage = `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
+      } else {
+        replyMessage = `🤷 Channel <b>${channelName}</b> doesn't exist in the list.`;
+      }
     } else {
-      replyMessage = `🤷 Channel <b>${channelName}</b> doesn't exist in the list.`;
+      replyMessage = 'Cannot extract messages from storage.';
     }
 
     await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
