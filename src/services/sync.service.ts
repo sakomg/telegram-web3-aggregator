@@ -49,21 +49,21 @@ export class SyncService {
   }
 
   async #processStart(client: TelegramClient, sender: any) {
-    const storageChannelResult = await this.messageService.getMessagesHistory(
+    const { success, value } = await this.messageService.getMessagesHistory(
       this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'),
       1,
     );
-    if (storageChannelResult == null) {
+    if (!success) {
       await client.sendMessage(sender, {
         message: `❗ Cannot extract storage channel messages.`,
         parseMode: 'html',
       });
       return;
     }
-    if (storageChannelResult.messages?.length) {
+    if (value.messages?.length) {
       let needToUpdate = false;
       let channelsWithGetMessageIssues: any[] = [];
-      const lastForwardedResult = storageChannelResult.messages[0];
+      const lastForwardedResult = value.messages[0];
       const scrapChannels = markdownToChannels(lastForwardedResult.message);
 
       for (const channel of scrapChannels) {
