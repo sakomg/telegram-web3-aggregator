@@ -68,11 +68,11 @@ export class SyncService {
 
       for (const channel of scrapChannels) {
         const result = await this.messageService.getMessagesHistory(channel.name, 3);
-        if (result == null) {
-          channelsWithGetMessageIssues.push(channel);
+        if (!result.success) {
+          channelsWithGetMessageIssues.push({ channel: channel.name, message: result.value });
           continue;
         }
-        const messages = result?.messages;
+        const messages = result.value?.messages;
 
         const newMessages = this.messageFilterService
           .filterGarbage(messages)
@@ -104,12 +104,14 @@ export class SyncService {
           }
         }
 
-        await delay(666);
+        await delay(777);
       }
 
       if (channelsWithGetMessageIssues.length) {
+        const channelDetails = channelsWithGetMessageIssues.map((item) => `${item.channel} (error: ${item.message})`).join(', ');
+
         await client.sendMessage(sender, {
-          message: `Cannot extract messages from channels: ${channelsWithGetMessageIssues.join(', ')}`,
+          message: `Cannot extract messages from channels: ${channelDetails}`,
         });
       }
 
