@@ -7,7 +7,7 @@
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
     "copy:env": "cp .env.example .env",
-    "start": "node build/main.js"
+    "start": "npm run build && node build/main.js"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
   "license": "ISC",
