@@ -19,7 +19,7 @@ export class SyncService {
     try {
       this.startIntervalId = setInterval(async () => {
         await this.#processStart(client, sender);
-      }, 60000);
+      }, 2 * 60 * 1000);
     } catch (error) {
       console.error('Error starting timer:', error);
     }

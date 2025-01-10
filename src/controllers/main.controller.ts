@@ -85,7 +85,7 @@ export default class MainController {
       }
     }, new NewMessage({}));
 
-    console.log('b:', botClient.session.save());
-    console.log('u:', userClient.session.save());
+    // console.log('b:', botClient.session.save());
+    // console.log('u:', userClient.session.save());
   }
 }
