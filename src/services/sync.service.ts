@@ -17,25 +17,9 @@ export class SyncService {
 
   async start(client: TelegramClient, sender: any) {
     try {
-      const sentMessage = await client.sendMessage(sender, {
-        message: `🔄 Sync in 60 seconds...`,
-        parseMode: 'html',
-      });
-
-      let remainingTime = 60;
       this.startIntervalId = setInterval(async () => {
-        remainingTime -= 15;
-        if (remainingTime > 0) {
-          client.editMessage(sender, {
-            message: sentMessage.id,
-            text: `🔄 Sync in ${remainingTime} seconds...`,
-          });
-        } else {
-          this.stop();
-          await client.deleteMessages(sender, [sentMessage.id], { revoke: true });
-          await this.#processStart(client, sender);
-        }
-      }, 15000);
+        await this.#processStart(client, sender);
+      }, 60000);
     } catch (error) {
       console.error('Error starting timer:', error);
     }
@@ -104,7 +88,7 @@ export class SyncService {
           }
         }
 
-        await delay(777);
+        await delay(888);
       }
 
       if (channelsWithGetMessageIssues.length) {
@@ -128,7 +112,5 @@ export class SyncService {
         message: '🗑️ Store channel is empty.',
       });
     }
-
-    await this.start(client, sender);
   }
 }
