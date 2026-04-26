@@ -1,13 +1,38 @@
 import { TelegramClient } from 'telegram';
+import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { MessageFilterService } from './filter.service';
+import { Logger } from './logger.service';
 import { MessageService } from './message.service';
 import { channelsToMarkdown, delay, markdownToChannels } from '../utils/main.utils';
+
+type ChannelState = {
+  name: string;
+  messageId: number;
+  channelId?: string;
+};
+
+type ChannelListener = {
+  handler: (event: NewMessageEvent) => Promise<void>;
+  eventBuilder: NewMessage;
+};
 
 export class SyncService {
   private readonly config;
   private readonly messageService: MessageService;
   private readonly messageFilterService: MessageFilterService;
-  private startIntervalId: NodeJS.Timeout | undefined;
+  private readonly logger = new Logger('SyncService');
+  private readonly sourceChannelHandlers = new Map<string, ChannelListener>();
+  private readonly traceIncomingMessages = (process.env.TRACE_INCOMING_MESSAGES ?? 'false').toLowerCase() === 'true';
+  private channelsState: ChannelState[] = [];
+  private storageMessageId: number | null = null;
+  private isActive = false;
+  private activeClient: TelegramClient | null = null;
+  private activeSender?: string[];
+
+  private static toRecipients(sender: string | string[] | undefined): string[] {
+    if (!sender) return [];
+    return Array.isArray(sender) ? sender.filter(Boolean) : [sender];
+  }
 
   constructor(config: any, messageService: MessageService, messageFilterService: MessageFilterService) {
     this.config = config;
@@ -15,102 +40,231 @@ export class SyncService {
     this.messageFilterService = messageFilterService;
   }
 
-  async start(client: TelegramClient, sender: any) {
-    try {
-      this.startIntervalId = setInterval(async () => {
-        await this.#processStart(client, sender);
-      }, 2 * 60 * 1000);
-    } catch (error) {
-      console.error('Error starting timer:', error);
+  async start(client: TelegramClient, sender?: string | string[]) {
+    if (this.isActive || this.sourceChannelHandlers.size > 0) {
+      this.stop();
     }
+
+    this.logger.info('Starting sync listeners');
+    this.isActive = true;
+    this.activeClient = client;
+    this.activeSender = SyncService.toRecipients(sender);
+
+    await this.#loadChannelsState(client, this.activeSender);
+    await this.#attachChannelListeners(client, this.activeSender);
+    this.logger.info(`Sync listeners are active for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels`);
   }
 
   stop() {
-    if (this.startIntervalId) {
-      clearInterval(this.startIntervalId);
-      this.startIntervalId = undefined;
+    if (!this.isActive && this.sourceChannelHandlers.size === 0) {
+      return;
     }
+
+    this.logger.info(`Stopping sync listeners (${this.sourceChannelHandlers.size} active)`);
+    this.isActive = false;
+    this.activeClient = null;
+    this.activeSender = undefined;
+
+    for (const listener of this.sourceChannelHandlers.values()) {
+      this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
+    }
+
+    this.sourceChannelHandlers.clear();
   }
 
-  async #processStart(client: TelegramClient, sender: any) {
+  async refreshSubscriptions(client?: TelegramClient, sender?: string | string[]) {
+    if (!this.isActive) {
+      return;
+    }
+
+    this.logger.info('Refreshing channel subscriptions');
+
+    const controlClient = client ?? this.activeClient;
+    const controlSender = sender ? SyncService.toRecipients(sender) : (this.activeSender ?? []);
+    if (!controlClient) {
+      return;
+    }
+
+    for (const listener of this.sourceChannelHandlers.values()) {
+      this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
+    }
+    this.sourceChannelHandlers.clear();
+
+    await this.#loadChannelsState(controlClient, controlSender);
+    await this.#attachChannelListeners(controlClient, controlSender);
+  }
+
+  async #loadChannelsState(client: TelegramClient, sender?: string[]) {
     const { success, value } = await this.messageService.getMessagesHistory(
       this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'),
       1,
     );
+
+    this.channelsState = [];
+    this.storageMessageId = null;
+
     if (!success) {
-      await client.sendMessage(sender, {
-        message: `❗ Cannot extract storage channel messages.`,
-        parseMode: 'html',
-      });
+      this.logger.warn('Cannot read storage channel messages');
+      for (const r of sender ?? []) {
+        await client.sendMessage(r, { message: `❗ Cannot extract storage channel messages.`, parseMode: 'html' });
+      }
       return;
     }
-    if (value.messages?.length) {
-      let needToUpdate = false;
-      let channelsWithGetMessageIssues: any[] = [];
-      const lastForwardedResult = value.messages[0];
-      const scrapChannels = markdownToChannels(lastForwardedResult.message);
 
-      for (const channel of scrapChannels) {
-        const result = await this.messageService.getMessagesHistory(channel.name, 3);
-        if (!result.success) {
-          channelsWithGetMessageIssues.push({ channel: channel.name, message: result.value });
-          continue;
+    if (!value.messages?.length) {
+      this.logger.warn('Storage channel is empty');
+      for (const r of sender ?? []) {
+        await client.sendMessage(r, { message: '🗑️ Store channel is empty.' });
+      }
+      return;
+    }
+
+    const lastForwardedResult = value.messages[0];
+    this.storageMessageId = lastForwardedResult.id;
+    this.channelsState = markdownToChannels(lastForwardedResult.message);
+    this.logger.info(`Loaded ${this.channelsState.length} channels from storage`);
+  }
+
+  async #attachChannelListeners(client: TelegramClient, sender?: string[]) {
+    let didResolveMissingIds = false;
+    const failedChannels: string[] = [];
+
+    for (const channel of this.channelsState) {
+      try {
+        if (channel.channelId === undefined || !channel.channelId.startsWith('-')) {
+          channel.channelId = await this.messageService.getUserChatPeerId(channel.name);
+          didResolveMissingIds = true;
         }
-        const messages = result.value?.messages;
 
-        const newMessages = this.messageFilterService
-          .filterGarbage(messages)
-          .filter((msg: any) => msg.id > channel.messageId)
-          .map((msg: any) => msg.id)
-          .sort((a: number, b: number) => a - b);
-
-        console.log(`${channel.name} ===>`, newMessages);
-
-        if (newMessages.length > 0) {
-          try {
-            await this.messageService.forwardMessages(
-              channel.name,
-              this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'),
-              newMessages,
-            );
-            await client.sendMessage(sender, {
-              message: `✨ Messages ${newMessages.join(', ')} have been forwarded from ${channel.name}.`,
-              parseMode: 'html',
-            });
-          } catch (e) {
-            await client.sendMessage(sender, {
-              message: `🚩 Error in forwarding messages ${newMessages.join(', ')} from ${channel.name} channel.`,
-              parseMode: 'html',
-            });
-          } finally {
-            needToUpdate = true;
-            channel.messageId = newMessages[newMessages.length - 1];
+        const handler = async (event: NewMessageEvent) => {
+          if (!this.isActive || !event?.message?.id) {
+            return;
           }
-        }
 
-        await delay(888);
+          const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
+
+          if (this.traceIncomingMessages) {
+            const snippet = normalizedText.slice(0, 40);
+            this.logger.warn(`Observed message ${event.message.id} from ${channel.name}${snippet ? ` | ${snippet}` : ''}`);
+          }
+
+          try {
+            const invalidReason = this.messageFilterService.getInvalidReason(event.message as any);
+            if (invalidReason !== null) {
+              const preview = normalizedText.slice(0, 80);
+              this.logger.warn(
+                `Skipped message ${event.message.id} from ${channel.name} (reason: ${invalidReason})${preview ? ` | ${preview}` : ''}`,
+              );
+              await this.#notifyStateMessage(
+                client,
+                sender,
+                channel.name,
+                event.message.id,
+                event.message.message,
+                'skipped',
+                invalidReason,
+              );
+              return;
+            }
+
+            if (event.message.id <= channel.messageId) {
+              await this.#notifyStateMessage(
+                client,
+                sender,
+                channel.name,
+                event.message.id,
+                event.message.message,
+                'skipped',
+                'already_processed',
+              );
+              return;
+            }
+
+            await this.messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [
+              event.message.id,
+            ]);
+
+            this.logger.info(`Forwarded message ${event.message.id} from ${channel.name}`);
+            await this.#notifyStateMessage(client, sender, channel.name, event.message.id, event.message.message, 'forwarded');
+
+            channel.messageId = event.message.id;
+            await this.#persistChannelsState();
+          } catch (e) {
+            this.logger.error(`Failed to forward message ${event.message.id} from ${channel.name}`, e);
+            for (const r of sender ?? []) {
+              await client.sendMessage(r, {
+                message: `🚩 Error in forwarding message ${event.message.id} from ${channel.name} channel.`,
+                parseMode: 'html',
+              });
+            }
+          }
+        };
+
+        const eventBuilder = await this.messageService.addChannelMessageListener(channel.name, handler, channel.channelId);
+        this.sourceChannelHandlers.set(channel.name, { handler, eventBuilder });
+        this.logger.debug(`Listener attached for ${channel.name}`);
+
+        // Avoid bursting entity resolution for large channel lists.
+        await delay(50);
+      } catch (error) {
+        failedChannels.push(channel.name);
+        this.logger.error(`Failed to attach listener for ${channel.name}`, error);
       }
+    }
 
-      if (channelsWithGetMessageIssues.length) {
-        const channelDetails = channelsWithGetMessageIssues.map((item) => `${item.channel} (error: ${item.message})`).join(', ');
+    if (didResolveMissingIds) {
+      await this.#persistChannelsState();
+    }
 
-        await client.sendMessage(sender, {
-          message: `Cannot extract messages from channels: ${channelDetails}`,
+    if (failedChannels.length) {
+      this.logger.warn(`Listener attach failed for ${failedChannels.length} channels`);
+      for (const r of sender ?? []) {
+        await client.sendMessage(r, {
+          message: `⚠️ Listener attach failed for channels: ${failedChannels.join(', ')}`,
+          parseMode: 'html',
         });
       }
+    }
+  }
 
-      if (needToUpdate) {
-        const markdown = channelsToMarkdown(scrapChannels);
-        console.log('markdown:', markdown);
-        await client.editMessage(this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'), {
-          message: lastForwardedResult.id,
-          text: markdown,
+  async #persistChannelsState() {
+    if (!this.storageMessageId) {
+      return;
+    }
+
+    const markdown = channelsToMarkdown(this.channelsState);
+    await this.messageService.editMessage(this.config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'), this.storageMessageId, markdown);
+  }
+
+  async #notifyStateMessage(
+    client: TelegramClient,
+    sender: string[] | undefined,
+    channelName: string,
+    messageId: number,
+    messageText: string | undefined,
+    state: 'forwarded' | 'skipped',
+    reason?: string,
+  ) {
+    const recipients = sender?.filter(Boolean) ?? [];
+    if (recipients.length === 0) {
+      return;
+    }
+
+    const preview = (messageText ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const details = preview ? `\nPreview: <i>${preview}</i>` : '';
+    const reasonText = state === 'skipped' && reason ? `\nReason: <code>${reason}</code>` : '';
+    const icon = state === 'forwarded' ? '✅' : '🧹';
+    const title = state === 'forwarded' ? 'Forwarded' : 'Skipped';
+
+    for (const recipient of recipients) {
+      try {
+        await client.sendMessage(recipient, {
+          message: `${icon} ${title} message <b>${messageId}</b> from <b>${channelName}</b>.${reasonText}${details}`,
+          parseMode: 'html',
         });
+      } catch (error) {
+        this.logger.warn(`Failed to notify ${state} message to recipient ${recipient}`, error);
       }
-    } else {
-      await client.sendMessage(sender, {
-        message: '🗑️ Store channel is empty.',
-      });
     }
   }
 }

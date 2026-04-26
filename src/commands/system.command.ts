@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { TelegramClient } from 'telegram';
 import { CommandHandler } from '../types/command-handler.interface';
+import { Logger } from '../services';
 
 const emoji = {
   CPU: '⚙️',
@@ -13,20 +14,20 @@ const emoji = {
 };
 
 export class SystemCommand implements CommandHandler {
-  constructor() {}
+  private readonly logger = new Logger('SystemCommand');
 
   async handle(botClient: TelegramClient, sender: any, message: string) {
-    console.log(`💥 /system handler`);
-    await botClient.sendMessage(sender, { message: this.getSystemInfo(), parseMode: 'html' });
+    this.logger.info('System command triggered');
+    await botClient.sendMessage(sender, { message: this.#getSystemInfo(), parseMode: 'html' });
   }
 
-  getSystemInfo() {
+  #getSystemInfo() {
     const totalMemoryMB = this.bytesToMB(os.totalmem());
     const freeMemoryMB = this.bytesToMB(os.freemem());
     const usedMemoryMB = totalMemoryMB - freeMemoryMB;
 
     const systemInfo = `
-      ${emoji.CPU} CPU Usage: ${this.getCpuUsage()}%
+      ${emoji.CPU} CPU Usage: ${this.#getCpuUsage()}%
       ${emoji.MEMORY} Memory:
           Total: ${totalMemoryMB.toFixed(2)} MB
           Free : ${freeMemoryMB.toFixed(2)} MB
@@ -41,7 +42,7 @@ export class SystemCommand implements CommandHandler {
     return systemInfo;
   }
 
-  getCpuUsage() {
+  #getCpuUsage() {
     const cpus: any[] = os.cpus();
     let totalIdle = 0;
     let totalTick = 0;

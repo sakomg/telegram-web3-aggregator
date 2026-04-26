@@ -1,23 +1,20 @@
 import { TelegramClient } from 'telegram';
 import { CommandHandler } from '../types/command-handler.interface';
+import { Logger } from '../services';
 
 export class CommandsCommand implements CommandHandler {
   private readonly commands: Record<string, string>;
+  private readonly logger = new Logger('CommandsCommand');
 
   constructor(commands: Record<string, string>) {
     this.commands = commands;
   }
 
   async handle(botClient: TelegramClient, sender: any) {
-    console.log(`💥 /commands handler`);
-    this.sendCommandsList(botClient, sender, this.commands);
-  }
-
-  sendCommandsList(bot: TelegramClient, sender: any, commandsObj: Record<string, string>) {
-    const message = Object.values(commandsObj)
+    this.logger.info('Commands command triggered');
+    const message = Object.values(this.commands)
       .map((cmd) => `<b>${cmd}</b>`)
       .join(' | ');
-
-    bot.sendMessage(sender, { message, parseMode: 'html' });
+    await botClient.sendMessage(sender, { message, parseMode: 'html' });
   }
 }

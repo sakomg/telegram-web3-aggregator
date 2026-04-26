@@ -14,13 +14,17 @@ export function markdownToChannels(markdownContent: string): Array<any> {
   const rows = markdownContent.trim().split('\n').slice(2);
 
   rows.forEach((row) => {
-    const [name, messageId] = row
+    const [name, messageId, channelId] = row
       .trim()
       .split('|')
-      .slice(1, 3)
+      .slice(1, 4)
       .map((cell) => cell.trim());
     if (name && messageId) {
-      channels.push({ name, messageId: parseInt(messageId) });
+      channels.push({
+        name,
+        messageId: parseInt(messageId),
+        channelId: channelId || undefined,
+      });
     }
   });
 
@@ -28,10 +32,10 @@ export function markdownToChannels(markdownContent: string): Array<any> {
 }
 
 export function channelsToMarkdown(channels: Array<any>): string {
-  let markdown = '| Name | Message ID |\n';
-  markdown += '| ---- | ---------- |\n';
+  let markdown = '| Name | Message ID | Channel ID |\n';
+  markdown += '| ---- | ---------- | ---------- |\n';
   channels.forEach((channel) => {
-    markdown += `| ${channel.name} | ${channel.messageId} |\n`;
+    markdown += `| ${channel.name} | ${channel.messageId} | ${channel.channelId ?? ''} |\n`;
   });
   return markdown;
 }

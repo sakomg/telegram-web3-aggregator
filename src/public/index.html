@@ -1,45 +1,245 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WEB3</title>
+    <title>Web3 Pulse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      :root {
+        --bg-1: #fdf7ec;
+        --bg-2: #eaf8f5;
+        --card: rgba(255, 255, 255, 0.82);
+        --text-main: #10211e;
+        --text-muted: #3f5851;
+        --accent-a: #1cb39a;
+        --accent-b: #ff8e3c;
+        --accent-c: #0d8fbe;
+        --shadow: 0 18px 50px rgba(16, 33, 30, 0.15);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: monospace, sans-serif;
+        font-family: 'Manrope', sans-serif;
         margin: 0;
-        padding: 0;
-        display: flex;
-        justify-content: center;
+        min-height: 100vh;
+        color: var(--text-main);
+        background:
+          radial-gradient(circle at 15% 20%, rgba(28, 179, 154, 0.2), transparent 45%),
+          radial-gradient(circle at 85% 15%, rgba(255, 142, 60, 0.2), transparent 42%),
+          radial-gradient(circle at 75% 85%, rgba(13, 143, 190, 0.2), transparent 40%),
+          linear-gradient(140deg, var(--bg-1), var(--bg-2));
+        overflow: hidden;
+      }
+
+      .orb {
+        position: fixed;
+        border-radius: 999px;
+        filter: blur(26px);
+        opacity: 0.5;
+        animation: float 8s ease-in-out infinite;
+        pointer-events: none;
+      }
+
+      .orb-a {
+        width: 220px;
+        height: 220px;
+        background: var(--accent-a);
+        top: -60px;
+        right: -30px;
+      }
+
+      .orb-b {
+        width: 180px;
+        height: 180px;
+        background: var(--accent-b);
+        bottom: -50px;
+        left: -40px;
+        animation-delay: 1.6s;
+      }
+
+      .orb-c {
+        width: 150px;
+        height: 150px;
+        background: var(--accent-c);
+        top: 58%;
+        left: 70%;
+        animation-delay: 0.8s;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px) translateX(0px);
+        }
+        50% {
+          transform: translateY(-14px) translateX(8px);
+        }
+      }
+
+      main {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .card {
+        width: min(760px, 100%);
+        background: var(--card);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(16, 33, 30, 0.08);
+        box-shadow: var(--shadow);
+        border-radius: 24px;
+        padding: 30px 26px;
+      }
+
+      .status {
+        display: inline-flex;
         align-items: center;
-        height: 100vh;
-        background-color: #f5f5f5;
-      }
-
-      .container {
-        text-align: center;
-      }
-
-      h3 {
-        font-size: 24px;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 13px;
+        color: #14695c;
+        padding: 8px 13px;
+        border-radius: 999px;
+        background: rgba(28, 179, 154, 0.16);
         margin-bottom: 20px;
       }
 
-      a {
-        font-size: 18px;
-        text-decoration: none;
-        color: #007bff;
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #1cb39a;
+        box-shadow: 0 0 0 0 rgba(28, 179, 154, 0.75);
+        animation: pulse 1.8s infinite;
       }
 
-      a:hover {
-        text-decoration: underline;
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(28, 179, 154, 0.75);
+        }
+        70% {
+          box-shadow: 0 0 0 9px rgba(28, 179, 154, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(28, 179, 154, 0);
+        }
+      }
+
+      h1 {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: clamp(46px, 10vw, 96px);
+        line-height: 0.92;
+        letter-spacing: 0.04em;
+        margin: 0;
+      }
+
+      .headline-accent {
+        color: var(--accent-c);
+      }
+
+      p {
+        margin: 14px 0 0;
+        font-size: clamp(16px, 2.2vw, 20px);
+        color: var(--text-muted);
+        max-width: 56ch;
+      }
+
+      .actions {
+        margin-top: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 18px;
+        border-radius: 12px;
+        font-weight: 800;
+        text-decoration: none;
+        transition:
+          transform 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+
+      .button-primary {
+        background: linear-gradient(120deg, var(--accent-a), var(--accent-c));
+        color: #ffffff;
+        box-shadow: 0 12px 24px rgba(13, 143, 190, 0.26);
+      }
+
+      .button-secondary {
+        color: #1a3f38;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(16, 33, 30, 0.15);
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+      }
+
+      .meta {
+        margin-top: 18px;
+        font-size: 14px;
+        color: #4d6760;
+      }
+
+      @media (max-width: 640px) {
+        .card {
+          border-radius: 20px;
+          padding: 24px 18px;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .button {
+          width: 100%;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <h3>Telegram bot page...</h3>
-      <p>Check the channel: <a href="https://t.me/web3_main">@web3_main</a></p>
-    </div>
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="orb orb-c"></div>
+
+    <main>
+      <section class="card">
+        <div class="status"><span class="dot"></span>LIVE BOT MONITOR</div>
+        <h1>Web3 Pulse <span class="headline-accent">Is On</span></h1>
+        <p>
+          Fresh signals from selected crypto channels are flowing in real-time. Catch curated updates, react faster, and stay
+          ahead of the market noise.
+        </p>
+
+        <div class="actions">
+          <a class="button button-primary" href="https://t.me/web3_main" target="_blank" rel="noopener noreferrer"
+            >Open @web3_main</a
+          >
+          <a class="button button-secondary" href="https://t.me/collector_web3_bot" target="_blank" rel="noopener noreferrer"
+            >Open Bot</a
+          >
+        </div>
+
+        <div class="meta">Status page for Telegram Web3 Aggregator.</div>
+      </section>
+    </main>
   </body>
 </html>
