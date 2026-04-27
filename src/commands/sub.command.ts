@@ -38,12 +38,7 @@ export class SubCommand implements CommandHandler {
           const entity: Entity = await client.getEntity(channelName);
           if (entity.className === 'Channel') {
             if (!scrapChannels.map((item) => item.name).includes(channelName)) {
-              const channelPeerId = await this.messageService.getUserChatPeerId(channelName);
-              scrapChannels.push({
-                name: channelName,
-                messageId: 0,
-                channelId: channelPeerId,
-              });
+              scrapChannels.push({ name: channelName, messageId: 0 });
               const markdown = channelsToMarkdown(scrapChannels);
               await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, markdown);
               didUpdateChannels = true;

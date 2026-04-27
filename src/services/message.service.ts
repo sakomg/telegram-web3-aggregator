@@ -1,8 +1,7 @@
 import { TelegramClient } from 'telegram';
-import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { Api } from 'telegram/tl';
-import { getPeerId } from 'telegram/Utils';
-import { normalizeUsername } from '../utils/main.utils';
+import { FloodWaitError } from 'telegram/errors';
+import { normalizeUsername, delay } from '../utils/main.utils';
 import { Logger } from './logger.service';
 
 export class MessageService {
@@ -11,8 +10,6 @@ export class MessageService {
   private readonly logger = new Logger('MessageService');
   private readonly botPeerCache = new Map<string, Promise<any>>();
   private readonly userPeerCache = new Map<string, Promise<any>>();
-  private readonly userEntityCache = new Map<string, Promise<any>>();
-  private readonly userChatPeerIdCache = new Map<string, Promise<string>>();
 
   constructor(botClient: TelegramClient, userClient: TelegramClient) {
     this.botClient = botClient;
@@ -23,7 +20,7 @@ export class MessageService {
     return normalizeUsername(channel).toLowerCase();
   }
 
-  async #getPeer(channel: string, clientType: 'BOT' | 'USER') {
+  async #getPeer(channel: string, clientType: 'BOT' | 'USER'): Promise<any> {
     const cache = clientType === 'BOT' ? this.botPeerCache : this.userPeerCache;
     const client = clientType === 'BOT' ? this.botClient : this.userClient;
     const channelKey = this.#getChannelKey(channel);
@@ -36,43 +33,13 @@ export class MessageService {
       return await cache.get(channelKey);
     } catch (error) {
       cache.delete(channelKey);
+      if (error instanceof FloodWaitError) {
+        this.logger.warn(`FloodWait resolving peer ${channelKey}: waiting ${error.seconds}s`);
+        await delay(error.seconds * 1000);
+        return this.#getPeer(channel, clientType);
+      }
       throw error;
     }
-  }
-
-  async #getUserEntity(channel: string) {
-    const channelKey = this.#getChannelKey(channel);
-    if (!this.userEntityCache.has(channelKey)) {
-      this.userEntityCache.set(channelKey, this.userClient.getEntity(channelKey));
-    }
-
-    try {
-      return await this.userEntityCache.get(channelKey)!;
-    } catch (error) {
-      this.userEntityCache.delete(channelKey);
-      throw error;
-    }
-  }
-
-  async #getUserChatPeerId(channel: string): Promise<string> {
-    const channelKey = this.#getChannelKey(channel);
-    if (!this.userChatPeerIdCache.has(channelKey)) {
-      this.userChatPeerIdCache.set(
-        channelKey,
-        this.#getUserEntity(channelKey).then((entity) => getPeerId(entity)),
-      );
-    }
-
-    try {
-      return await this.userChatPeerIdCache.get(channelKey)!;
-    } catch (error) {
-      this.userChatPeerIdCache.delete(channelKey);
-      throw error;
-    }
-  }
-
-  async getUserChatPeerId(channel: string): Promise<string> {
-    return this.#getUserChatPeerId(channel);
   }
 
   async getMessagesHistory(channel: string, limit: number) {
@@ -99,7 +66,7 @@ export class MessageService {
     return result;
   }
 
-  async getMessagesSince(channel: string, minId: number, limit = 50) {
+  async getMessagesSince(channel: string, minId: number, limit = 50): Promise<Record<string, any>> {
     let result: Record<string, any> = { success: true, value: null };
     try {
       const peer = await this.#getPeer(channel, 'USER');
@@ -112,6 +79,11 @@ export class MessageService {
       );
     } catch (e) {
       this.logger.error(`Failed to fetch messages since ${minId} for ${channel}`, e);
+      if (e instanceof FloodWaitError) {
+        this.logger.warn(`FloodWait on getMessagesSince for ${channel}: waiting ${e.seconds}s`);
+        await delay(e.seconds * 1000);
+        return this.getMessagesSince(channel, minId, limit);
+      }
       result.success = false;
       result.value = e;
     }
@@ -200,20 +172,5 @@ export class MessageService {
       message: messageId,
       text,
     });
-  }
-
-  async addChannelMessageListener(chat: string, handler: (event: NewMessageEvent) => Promise<void>, chatPeerId?: string) {
-    const resolvedChatPeerId = chatPeerId ?? (await this.#getUserChatPeerId(chat));
-    const eventBuilder = new NewMessage({ chats: [resolvedChatPeerId] });
-    this.userClient.addEventHandler(handler, eventBuilder);
-    return eventBuilder;
-  }
-
-  removeChannelMessageListener(handler: (event: NewMessageEvent) => Promise<void>, eventBuilder: NewMessage) {
-    this.userClient.removeEventHandler(handler, eventBuilder);
-  }
-
-  isUserClientConnected(): boolean {
-    return this.userClient.connected === true;
   }
 }

@@ -85,6 +85,13 @@ export default class MainController {
     this.logger.info('Starting sync service on launch');
     const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES') ?? [];
     const monitoringRecipients = adminUsernames.map((u: string) => (u.startsWith('@') ? u : `@${u}`));
+
+    for (const r of monitoringRecipients) {
+      botClient.sendMessage(r, { message: '🔄 Bot restarted. Sync polling started automatically.' }).catch((e) => {
+        this.logger.error(`Failed to send restart notification to ${r}`, e);
+      });
+    }
+
     await syncService.start(botClient, monitoringRecipients);
 
     // this.logger.debug(String((botClient.session as any).save()));

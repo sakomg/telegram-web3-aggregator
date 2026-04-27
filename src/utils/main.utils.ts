@@ -3,10 +3,8 @@ export function normalizeUsername(username: string): string {
   else return `@${username}`;
 }
 
-export function delay(time: number): Promise<void> {
-  return new Promise(function (resolve) {
-    setTimeout(resolve, time);
-  });
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function markdownToChannels(markdownContent: string): Array<any> {
@@ -14,17 +12,13 @@ export function markdownToChannels(markdownContent: string): Array<any> {
   const rows = markdownContent.trim().split('\n').slice(2);
 
   rows.forEach((row) => {
-    const [name, messageId, channelId] = row
+    const [name, messageId] = row
       .trim()
       .split('|')
-      .slice(1, 4)
+      .slice(1, 3)
       .map((cell) => cell.trim());
     if (name && messageId) {
-      channels.push({
-        name,
-        messageId: parseInt(messageId),
-        channelId: channelId || undefined,
-      });
+      channels.push({ name, messageId: parseInt(messageId) });
     }
   });
 
@@ -32,10 +26,10 @@ export function markdownToChannels(markdownContent: string): Array<any> {
 }
 
 export function channelsToMarkdown(channels: Array<any>): string {
-  let markdown = '| Name | Message ID | Channel ID |\n';
-  markdown += '| ---- | ---------- | ---------- |\n';
+  let markdown = '| Name | Message ID |\n';
+  markdown += '| ---- | ---------- |\n';
   channels.forEach((channel) => {
-    markdown += `| ${channel.name} | ${channel.messageId} | ${channel.channelId ?? ''} |\n`;
+    markdown += `| ${channel.name} | ${channel.messageId} |\n`;
   });
   return markdown;
 }

@@ -1,5 +1,4 @@
 import { TelegramClient } from 'telegram';
-import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { MessageFilterService } from './filter.service';
 import { Logger } from './logger.service';
 import { MessageService } from './message.service';
@@ -8,12 +7,6 @@ import { channelsToMarkdown, delay, markdownToChannels } from '../utils/main.uti
 type ChannelState = {
   name: string;
   messageId: number;
-  channelId?: string;
-};
-
-type ChannelListener = {
-  handler: (event: NewMessageEvent) => Promise<void>;
-  eventBuilder: NewMessage;
 };
 
 export class SyncService {
@@ -21,16 +14,14 @@ export class SyncService {
   private readonly messageService: MessageService;
   private readonly messageFilterService: MessageFilterService;
   private readonly logger = new Logger('SyncService');
-  private readonly sourceChannelHandlers = new Map<string, ChannelListener>();
   private channelsState: ChannelState[] = [];
   private storageMessageId: number | null = null;
   private isActive = false;
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
-  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
-  private catchUpInterval: ReturnType<typeof setInterval> | null = null;
-  private static readonly HEALTH_CHECK_MS = 5 * 60 * 1000;   // 5 minutes
-  private static readonly CATCH_UP_MS = 30 * 60 * 1000;      // 30 minutes
+
+  private static readonly INTER_CHANNEL_DELAY_MS = 500; // between each channel request
+  private static readonly INTER_PASS_DELAY_MS = 30_000; // minimum gap between full passes
 
   private static toRecipients(sender: string | string[] | undefined): string[] {
     if (!sender) return [];
@@ -44,47 +35,31 @@ export class SyncService {
   }
 
   async start(client: TelegramClient, sender?: string | string[]) {
-    if (this.isActive || this.sourceChannelHandlers.size > 0) {
+    if (this.isActive) {
       this.stop();
     }
 
-    this.logger.info('Starting sync listeners');
+    this.logger.info('Starting sync polling');
     this.isActive = true;
     this.activeClient = client;
     this.activeSender = SyncService.toRecipients(sender);
 
     await this.#loadChannelsState(client, this.activeSender);
-    await this.#attachChannelListeners(client, this.activeSender);
-    this.logger.info(`Sync listeners are active for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels`);
-    this.#startHealthCheck();
-    this.#startCatchUpScheduler(client);
+    this.logger.info(`Starting continuous polling for ${this.channelsState.length} channels`);
+
+    // Fire-and-forget: loop runs in background until stop() sets isActive = false
+    this.#runLoop(client);
   }
 
   stop() {
-    if (!this.isActive && this.sourceChannelHandlers.size === 0) {
+    if (!this.isActive) {
       return;
     }
 
-    this.logger.info(`Stopping sync listeners (${this.sourceChannelHandlers.size} active)`);
+    this.logger.info('Stopping sync polling');
     this.isActive = false;
     this.activeClient = null;
     this.activeSender = undefined;
-
-    if (this.healthCheckInterval !== null) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-
-    if (this.catchUpInterval !== null) {
-      clearInterval(this.catchUpInterval);
-      this.catchUpInterval = null;
-    }
-
-    for (const listener of this.sourceChannelHandlers.values()) {
-      this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
-    }
-
-    this.sourceChannelHandlers.clear();
   }
 
   async refreshSubscriptions(client?: TelegramClient, sender?: string | string[]) {
@@ -92,7 +67,7 @@ export class SyncService {
       return;
     }
 
-    this.logger.info('Refreshing channel subscriptions');
+    this.logger.info('Refreshing channel list from storage');
 
     const controlClient = client ?? this.activeClient;
     const controlSender = sender ? SyncService.toRecipients(sender) : (this.activeSender ?? []);
@@ -100,31 +75,24 @@ export class SyncService {
       return;
     }
 
-    for (const listener of this.sourceChannelHandlers.values()) {
-      this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
-    }
-    this.sourceChannelHandlers.clear();
-
     await this.#loadChannelsState(controlClient, controlSender);
-    await this.#attachChannelListeners(controlClient, controlSender);
   }
 
-  #startCatchUpScheduler(client: TelegramClient) {
-    if (this.catchUpInterval !== null) {
-      clearInterval(this.catchUpInterval);
+  async #runLoop(client: TelegramClient) {
+    while (this.isActive) {
+      await this.#runPollCheck(client);
+      if (this.isActive) {
+        await delay(SyncService.INTER_PASS_DELAY_MS);
+      }
     }
-
-    this.catchUpInterval = setInterval(async () => {
-      if (!this.isActive) return;
-      this.logger.info('Running catch-up check for all channels');
-      await this.#runCatchUpCheck(client);
-    }, SyncService.CATCH_UP_MS);
+    this.logger.info('Poll loop exited');
   }
 
-  async #runCatchUpCheck(client: TelegramClient) {
+  async #runPollCheck(client: TelegramClient) {
     let totalForwarded = 0;
 
     for (const channel of this.channelsState) {
+      if (!this.isActive) break;
       try {
         const { success, value } = await this.messageService.getMessagesSince(channel.name, channel.messageId);
         if (!success || !value?.messages?.length) continue;
@@ -137,68 +105,30 @@ export class SyncService {
 
           const invalidReason = this.messageFilterService.getInvalidReason(msg);
           if (invalidReason !== null) {
-            this.logger.warn(`[CatchUp] Skipped message ${msg.id} from ${channel.name} (reason: ${invalidReason})`);
+            this.logger.warn(`[Poll] Skipped message ${msg.id} from ${channel.name} (reason: ${invalidReason})`);
             continue;
           }
 
-          await this.messageService.forwardMessages(
-            channel.name,
-            this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'),
-            [msg.id],
-          );
+          await this.messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [msg.id]);
 
-          this.logger.info(`[CatchUp] Forwarded message ${msg.id} from ${channel.name}`);
-          await this.#notifyStateMessage(client, this.activeSender, channel.name, msg.id, msg.message, 'forwarded');
+          this.logger.info(`[Poll] Forwarded message ${msg.id} from ${channel.name}`);
+          await this.#notifyStateMessage(client, this.activeSender, channel.name, msg.id, msg.message);
 
           channel.messageId = msg.id;
           totalForwarded++;
-
-          await delay(300);
         }
       } catch (e) {
-        this.logger.error(`[CatchUp] Failed for channel ${channel.name}`, e);
+        this.logger.error(`[Poll] Failed for channel ${channel.name}`, e);
       }
+
+      await delay(SyncService.INTER_CHANNEL_DELAY_MS);
     }
 
     if (totalForwarded > 0) {
       await this.#persistChannelsState();
     }
 
-    this.logger.info(`Catch-up check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
-  }
-
-  #startHealthCheck() {
-    if (this.healthCheckInterval !== null) {
-      clearInterval(this.healthCheckInterval);
-    }
-
-    this.healthCheckInterval = setInterval(async () => {
-      if (!this.isActive || !this.activeClient) {
-        return;
-      }
-
-      const userClientConnected = this.messageService.isUserClientConnected();
-      if (!userClientConnected) {
-        this.logger.warn('User client disconnected — re-attaching channel listeners');
-        for (const r of this.activeSender ?? []) {
-          try {
-            await this.activeClient.sendMessage(r, {
-              message: '⚠️ User client disconnect detected. Re-attaching channel listeners…',
-            });
-          } catch {
-            // best-effort notification
-          }
-        }
-
-        for (const listener of this.sourceChannelHandlers.values()) {
-          this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
-        }
-        this.sourceChannelHandlers.clear();
-
-        await this.#attachChannelListeners(this.activeClient, this.activeSender);
-        this.logger.info(`Re-attached listeners for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels after disconnect`);
-      }
-    }, SyncService.HEALTH_CHECK_MS);
+    this.logger.info(`Poll check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
   }
 
   async #loadChannelsState(client: TelegramClient, sender?: string[]) {
@@ -232,101 +162,6 @@ export class SyncService {
     this.logger.info(`Loaded ${this.channelsState.length} channels from storage`);
   }
 
-  async #attachChannelListeners(client: TelegramClient, sender?: string[]) {
-    let didResolveMissingIds = false;
-    const failedChannels: string[] = [];
-
-    for (const channel of this.channelsState) {
-      try {
-        if (channel.channelId === undefined || !channel.channelId.startsWith('-')) {
-          channel.channelId = await this.messageService.getUserChatPeerId(channel.name);
-          didResolveMissingIds = true;
-        }
-
-        const handler = async (event: NewMessageEvent) => {
-          if (!this.isActive || !event?.message?.id) {
-            return;
-          }
-
-          const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
-
-          try {
-            const invalidReason = this.messageFilterService.getInvalidReason(event.message as any);
-            if (invalidReason !== null) {
-              const preview = normalizedText.slice(0, 80);
-              this.logger.warn(
-                `Skipped message ${event.message.id} from ${channel.name} (reason: ${invalidReason})${preview ? ` | ${preview}` : ''}`,
-              );
-              await this.#notifyStateMessage(
-                client,
-                sender,
-                channel.name,
-                event.message.id,
-                event.message.message,
-                'skipped',
-                invalidReason,
-              );
-              return;
-            }
-
-            if (event.message.id <= channel.messageId) {
-              this.logger.warn(
-                `Skipped message ${event.message.id} from ${channel.name} (reason: already_processed, stored id: ${channel.messageId})`,
-              );
-              return;
-            }
-
-            await this.messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [
-              event.message.id,
-            ]);
-
-            this.logger.info(`Forwarded message ${event.message.id} from ${channel.name}`);
-            await this.#notifyStateMessage(client, sender, channel.name, event.message.id, event.message.message, 'forwarded');
-
-            channel.messageId = event.message.id;
-            await this.#persistChannelsState();
-          } catch (e) {
-            if (String(e).includes('MESSAGE_ID_INVALID')) {
-              this.logger.warn(`Skipped message ${event.message.id} from ${channel.name} (reason: message_id_invalid)`);
-              return;
-            }
-            this.logger.error(`Failed to forward message ${event.message.id} from ${channel.name}`, e);
-            for (const r of sender ?? []) {
-              await client.sendMessage(r, {
-                message: `🚩 Error in forwarding message ${event.message.id} from ${channel.name} channel.`,
-                parseMode: 'html',
-              });
-            }
-          }
-        };
-
-        const eventBuilder = await this.messageService.addChannelMessageListener(channel.name, handler, channel.channelId);
-        this.sourceChannelHandlers.set(channel.name, { handler, eventBuilder });
-        this.logger.info(`Listener attached for ${channel.name} (peerId=${channel.channelId})`);
-
-        // Avoid bursting entity resolution for large channel lists.
-        await delay(50);
-      } catch (error) {
-        failedChannels.push(channel.name);
-        this.logger.error(`Failed to attach listener for ${channel.name}`, error);
-      }
-    }
-
-    if (didResolveMissingIds) {
-      await this.#persistChannelsState();
-    }
-
-    if (failedChannels.length) {
-      this.logger.warn(`Listener attach failed for ${failedChannels.length} channels`);
-      for (const r of sender ?? []) {
-        await client.sendMessage(r, {
-          message: `⚠️ Listener attach failed for channels: ${failedChannels.join(', ')}`,
-          parseMode: 'html',
-        });
-      }
-    }
-  }
-
   async #persistChannelsState() {
     if (!this.storageMessageId) {
       return;
@@ -342,8 +177,6 @@ export class SyncService {
     channelName: string,
     messageId: number,
     messageText: string | undefined,
-    state: 'forwarded' | 'skipped',
-    reason?: string,
   ) {
     const recipients = sender?.filter(Boolean) ?? [];
     if (recipients.length === 0) {
@@ -352,18 +185,15 @@ export class SyncService {
 
     const preview = (messageText ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     const details = preview ? `\nPreview: <i>${preview}</i>` : '';
-    const reasonText = state === 'skipped' && reason ? `\nReason: <code>${reason}</code>` : '';
-    const icon = state === 'forwarded' ? '✅' : '🧹';
-    const title = state === 'forwarded' ? 'Forwarded' : 'Skipped';
 
     for (const recipient of recipients) {
       try {
         await client.sendMessage(recipient, {
-          message: `${icon} ${title} message <b>${messageId}</b> from <b>${channelName}</b>.${reasonText}${details}`,
+          message: `✅ Forwarded message <b>${messageId}</b> from <b>${channelName}</b>.${details}`,
           parseMode: 'html',
         });
       } catch (error) {
-        this.logger.warn(`Failed to notify ${state} message to recipient ${recipient}`, error);
+        this.logger.warn(`Failed to notify forwarded message to recipient ${recipient}`, error);
       }
     }
   }
