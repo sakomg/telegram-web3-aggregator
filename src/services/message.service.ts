@@ -101,10 +101,10 @@ export class MessageService {
 
   async forwardMessages(fromChannel: string, toChannel: string, messageIds: Array<number>) {
     try {
-      const fromPeer = await this.#getPeer(fromChannel, 'BOT');
-      const toPeer = await this.#getPeer(toChannel, 'BOT');
+      const fromPeer = await this.#getPeer(fromChannel, 'USER');
+      const toPeer = await this.#getPeer(toChannel, 'USER');
 
-      await this.botClient.invoke(
+      await this.userClient.invoke(
         new Api.messages.ForwardMessages({
           id: messageIds,
           fromPeer,
@@ -188,16 +188,6 @@ export class MessageService {
     const eventBuilder = new NewMessage({ chats: [resolvedChatPeerId] });
     this.userClient.addEventHandler(handler, eventBuilder);
     return eventBuilder;
-  }
-
-  addRawMessageListener(handler: (event: NewMessageEvent) => void) {
-    const eventBuilder = new NewMessage({});
-    this.userClient.addEventHandler(handler, eventBuilder);
-    return eventBuilder;
-  }
-
-  removeRawMessageListener(handler: (event: NewMessageEvent) => void, eventBuilder: NewMessage) {
-    this.userClient.removeEventHandler(handler, eventBuilder);
   }
 
   removeChannelMessageListener(handler: (event: NewMessageEvent) => Promise<void>, eventBuilder: NewMessage) {

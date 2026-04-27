@@ -52,13 +52,6 @@ export class SyncService {
     await this.#loadChannelsState(client, this.activeSender);
     await this.#attachChannelListeners(client, this.activeSender);
     this.logger.info(`Sync listeners are active for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels`);
-
-    // TEMP DIAGNOSTIC: log all incoming user client messages regardless of filter
-    this.messageService.addRawMessageListener((event: any) => {
-      const peerId = event?.message?.peerId;
-      const id = event?.message?.id;
-      this.logger.warn(`[RAW] message ${id} peerId: ${JSON.stringify(peerId)}`);
-    });
   }
 
   stop() {
@@ -202,7 +195,7 @@ export class SyncService {
 
         const eventBuilder = await this.messageService.addChannelMessageListener(channel.name, handler, channel.channelId);
         this.sourceChannelHandlers.set(channel.name, { handler, eventBuilder });
-        this.logger.info(`Listener attached for ${channel.name} (peerId: ${channel.channelId})`);
+        this.logger.info(`Listener attached for ${channel.name}`);
 
         // Avoid bursting entity resolution for large channel lists.
         await delay(50);
