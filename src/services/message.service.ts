@@ -99,6 +99,25 @@ export class MessageService {
     return result;
   }
 
+  async getMessagesSince(channel: string, minId: number, limit = 50) {
+    let result: Record<string, any> = { success: true, value: null };
+    try {
+      const peer = await this.#getPeer(channel, 'USER');
+      result.value = await this.userClient.invoke(
+        new Api.messages.GetHistory({
+          peer,
+          limit,
+          minId,
+        }),
+      );
+    } catch (e) {
+      this.logger.error(`Failed to fetch messages since ${minId} for ${channel}`, e);
+      result.success = false;
+      result.value = e;
+    }
+    return result;
+  }
+
   async forwardMessages(fromChannel: string, toChannel: string, messageIds: Array<number>) {
     try {
       const fromPeer = await this.#getPeer(fromChannel, 'USER');

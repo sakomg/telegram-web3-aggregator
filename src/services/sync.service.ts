@@ -28,7 +28,9 @@ export class SyncService {
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
-  private static readonly HEALTH_CHECK_MS = 5 * 60 * 1000; // 5 minutes
+  private catchUpInterval: ReturnType<typeof setInterval> | null = null;
+  private static readonly HEALTH_CHECK_MS = 5 * 60 * 1000;   // 5 minutes
+  private static readonly CATCH_UP_MS = 30 * 60 * 1000;      // 30 minutes
 
   private static toRecipients(sender: string | string[] | undefined): string[] {
     if (!sender) return [];
@@ -54,8 +56,8 @@ export class SyncService {
     await this.#loadChannelsState(client, this.activeSender);
     await this.#attachChannelListeners(client, this.activeSender);
     this.logger.info(`Sync listeners are active for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels`);
-    this.#attachDebugListener(client);
     this.#startHealthCheck();
+    this.#startCatchUpScheduler(client);
   }
 
   stop() {
@@ -71,6 +73,11 @@ export class SyncService {
     if (this.healthCheckInterval !== null) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
+    }
+
+    if (this.catchUpInterval !== null) {
+      clearInterval(this.catchUpInterval);
+      this.catchUpInterval = null;
     }
 
     for (const listener of this.sourceChannelHandlers.values()) {
@@ -102,21 +109,62 @@ export class SyncService {
     await this.#attachChannelListeners(controlClient, controlSender);
   }
 
-  #attachDebugListener(client: TelegramClient) {
-    const { userClient } = this.messageService as any;
-    if (!userClient) return;
+  #startCatchUpScheduler(client: TelegramClient) {
+    if (this.catchUpInterval !== null) {
+      clearInterval(this.catchUpInterval);
+    }
 
-    const knownPeerIds = new Set(this.channelsState.map((c) => c.channelId).filter(Boolean));
-    this.logger.info(`Debug listener watching ${knownPeerIds.size} peer IDs: ${[...knownPeerIds].join(', ')}`);
+    this.catchUpInterval = setInterval(async () => {
+      if (!this.isActive) return;
+      this.logger.info('Running catch-up check for all channels');
+      await this.#runCatchUpCheck(client);
+    }, SyncService.CATCH_UP_MS);
+  }
 
-    userClient.addEventHandler((event: NewMessageEvent) => {
-      if (!event?.message?.id) return;
-      const rawPeerId = (event.message as any).peerId?.channelId ?? (event.message as any).peerId?.userId ?? (event.message as any).peerId;
-      const peerId = String(rawPeerId ?? '?');
-      // Log all incoming so we can compare against knownPeerIds
-      const matched = knownPeerIds.has(`-100${peerId}`) || knownPeerIds.has(peerId);
-      this.logger.info(`[RAW] msg=${event.message.id} peerId=${peerId} matched=${matched} text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')}`);
-    }, new (require('telegram/events').NewMessage)({}));
+  async #runCatchUpCheck(client: TelegramClient) {
+    let totalForwarded = 0;
+
+    for (const channel of this.channelsState) {
+      try {
+        const { success, value } = await this.messageService.getMessagesSince(channel.name, channel.messageId);
+        if (!success || !value?.messages?.length) continue;
+
+        // GetHistory returns newest-first; reverse to forward in chronological order
+        const messages: any[] = [...value.messages].reverse();
+
+        for (const msg of messages) {
+          if (!msg.id || msg.id <= channel.messageId) continue;
+
+          const invalidReason = this.messageFilterService.getInvalidReason(msg);
+          if (invalidReason !== null) {
+            this.logger.warn(`[CatchUp] Skipped message ${msg.id} from ${channel.name} (reason: ${invalidReason})`);
+            continue;
+          }
+
+          await this.messageService.forwardMessages(
+            channel.name,
+            this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'),
+            [msg.id],
+          );
+
+          this.logger.info(`[CatchUp] Forwarded message ${msg.id} from ${channel.name}`);
+          await this.#notifyStateMessage(client, this.activeSender, channel.name, msg.id, msg.message, 'forwarded');
+
+          channel.messageId = msg.id;
+          totalForwarded++;
+
+          await delay(300);
+        }
+      } catch (e) {
+        this.logger.error(`[CatchUp] Failed for channel ${channel.name}`, e);
+      }
+    }
+
+    if (totalForwarded > 0) {
+      await this.#persistChannelsState();
+    }
+
+    this.logger.info(`Catch-up check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
   }
 
   #startHealthCheck() {
@@ -200,7 +248,6 @@ export class SyncService {
             return;
           }
 
-          this.logger.info(`Received message ${event.message.id} from ${channel.name} | text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')} media=${!!(event.message as any).media}`);
           const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
 
           try {
