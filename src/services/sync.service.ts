@@ -162,15 +162,6 @@ export class SyncService {
             }
 
             if (event.message.id <= channel.messageId) {
-              await this.#notifyStateMessage(
-                client,
-                sender,
-                channel.name,
-                event.message.id,
-                event.message.message,
-                'skipped',
-                'already_processed',
-              );
               return;
             }
 
@@ -184,6 +175,10 @@ export class SyncService {
             channel.messageId = event.message.id;
             await this.#persistChannelsState();
           } catch (e) {
+            if (String(e).includes('MESSAGE_ID_INVALID')) {
+              this.logger.warn(`Skipped message ${event.message.id} from ${channel.name} (reason: message_id_invalid)`);
+              return;
+            }
             this.logger.error(`Failed to forward message ${event.message.id} from ${channel.name}`, e);
             for (const r of sender ?? []) {
               await client.sendMessage(r, {
