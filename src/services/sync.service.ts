@@ -22,7 +22,6 @@ export class SyncService {
   private readonly messageFilterService: MessageFilterService;
   private readonly logger = new Logger('SyncService');
   private readonly sourceChannelHandlers = new Map<string, ChannelListener>();
-  private readonly traceIncomingMessages = (process.env.TRACE_INCOMING_MESSAGES ?? 'false').toLowerCase() === 'true';
   private channelsState: ChannelState[] = [];
   private storageMessageId: number | null = null;
   private isActive = false;
@@ -142,11 +141,6 @@ export class SyncService {
           }
 
           const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
-
-          if (this.traceIncomingMessages) {
-            const snippet = normalizedText.slice(0, 40);
-            this.logger.warn(`Observed message ${event.message.id} from ${channel.name}${snippet ? ` | ${snippet}` : ''}`);
-          }
 
           try {
             const invalidReason = this.messageFilterService.getInvalidReason(event.message as any);

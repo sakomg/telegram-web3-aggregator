@@ -1,22 +1,12 @@
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { CommandHandler } from '../types/command-handler.interface';
-import {
-  CommandsCommand,
-  PinCommand,
-  RmCommand,
-  StartCommand,
-  StopCommand,
-  SubCommand,
-  SystemCommand,
-  TranscribeCommand,
-} from '../commands';
+import { CommandsCommand, PinCommand, RmCommand, StartCommand, StopCommand, SubCommand, TranscribeCommand } from '../commands';
 import { Logger, MessageFilterService, MessageService, SyncService } from '../services';
 import TgClientAuth from '../auth/main.auth';
 
 const COMMANDS: Record<string, string> = {
   START: '/start',
   STOP: '/stop',
-  SYSTEM: '/system',
   TRANSCRIBE: '/transcribe',
   SUB: '/sub',
   RM: '/rm',
@@ -48,7 +38,6 @@ export default class MainController {
     const commandHandlers: Record<string, CommandHandler> = {
       [COMMANDS.START]: new StartCommand(syncService),
       [COMMANDS.STOP]: new StopCommand(syncService),
-      [COMMANDS.SYSTEM]: new SystemCommand(),
       [COMMANDS.TRANSCRIBE]: new TranscribeCommand(messageService, this.config),
       [COMMANDS.SUB]: new SubCommand(messageService, this.storageChannel, syncService),
       [COMMANDS.RM]: new RmCommand(messageService, this.storageChannel, syncService),
