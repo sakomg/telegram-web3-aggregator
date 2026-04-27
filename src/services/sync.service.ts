@@ -111,9 +111,11 @@ export class SyncService {
 
     userClient.addEventHandler((event: NewMessageEvent) => {
       if (!event?.message?.id) return;
-      const peerId = String((event.message as any).peerId?.channelId ?? (event.message as any).peerId?.userId ?? (event.message as any).peerId ?? '?');
-      const fromId = String((event.message as any).fromId?.userId ?? (event.message as any).fromId?.channelId ?? '?');
-      this.logger.info(`[RAW] msg=${event.message.id} peerId=${peerId} fromId=${fromId} text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')}`);
+      const rawPeerId = (event.message as any).peerId?.channelId ?? (event.message as any).peerId?.userId ?? (event.message as any).peerId;
+      const peerId = String(rawPeerId ?? '?');
+      // Log all incoming so we can compare against knownPeerIds
+      const matched = knownPeerIds.has(`-100${peerId}`) || knownPeerIds.has(peerId);
+      this.logger.info(`[RAW] msg=${event.message.id} peerId=${peerId} matched=${matched} text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')}`);
     }, new (require('telegram/events').NewMessage)({}));
   }
 
