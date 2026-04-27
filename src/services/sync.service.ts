@@ -27,6 +27,8 @@ export class SyncService {
   private isActive = false;
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private static readonly HEALTH_CHECK_MS = 5 * 60 * 1000; // 5 minutes
 
   private static toRecipients(sender: string | string[] | undefined): string[] {
     if (!sender) return [];
@@ -52,6 +54,8 @@ export class SyncService {
     await this.#loadChannelsState(client, this.activeSender);
     await this.#attachChannelListeners(client, this.activeSender);
     this.logger.info(`Sync listeners are active for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels`);
+    this.#attachDebugListener(client);
+    this.#startHealthCheck();
   }
 
   stop() {
@@ -63,6 +67,11 @@ export class SyncService {
     this.isActive = false;
     this.activeClient = null;
     this.activeSender = undefined;
+
+    if (this.healthCheckInterval !== null) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
 
     for (const listener of this.sourceChannelHandlers.values()) {
       this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
@@ -91,6 +100,55 @@ export class SyncService {
 
     await this.#loadChannelsState(controlClient, controlSender);
     await this.#attachChannelListeners(controlClient, controlSender);
+  }
+
+  #attachDebugListener(client: TelegramClient) {
+    const { userClient } = this.messageService as any;
+    if (!userClient) return;
+
+    const knownPeerIds = new Set(this.channelsState.map((c) => c.channelId).filter(Boolean));
+    this.logger.info(`Debug listener watching ${knownPeerIds.size} peer IDs: ${[...knownPeerIds].join(', ')}`);
+
+    userClient.addEventHandler((event: NewMessageEvent) => {
+      if (!event?.message?.id) return;
+      const peerId = String((event.message as any).peerId?.channelId ?? (event.message as any).peerId?.userId ?? (event.message as any).peerId ?? '?');
+      const fromId = String((event.message as any).fromId?.userId ?? (event.message as any).fromId?.channelId ?? '?');
+      this.logger.info(`[RAW] msg=${event.message.id} peerId=${peerId} fromId=${fromId} text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')}`);
+    }, new (require('telegram/events').NewMessage)({}));
+  }
+
+  #startHealthCheck() {
+    if (this.healthCheckInterval !== null) {
+      clearInterval(this.healthCheckInterval);
+    }
+
+    this.healthCheckInterval = setInterval(async () => {
+      if (!this.isActive || !this.activeClient) {
+        return;
+      }
+
+      const userClientConnected = this.messageService.isUserClientConnected();
+      if (!userClientConnected) {
+        this.logger.warn('User client disconnected — re-attaching channel listeners');
+        for (const r of this.activeSender ?? []) {
+          try {
+            await this.activeClient.sendMessage(r, {
+              message: '⚠️ User client disconnect detected. Re-attaching channel listeners…',
+            });
+          } catch {
+            // best-effort notification
+          }
+        }
+
+        for (const listener of this.sourceChannelHandlers.values()) {
+          this.messageService.removeChannelMessageListener(listener.handler, listener.eventBuilder);
+        }
+        this.sourceChannelHandlers.clear();
+
+        await this.#attachChannelListeners(this.activeClient, this.activeSender);
+        this.logger.info(`Re-attached listeners for ${this.sourceChannelHandlers.size}/${this.channelsState.length} channels after disconnect`);
+      }
+    }, SyncService.HEALTH_CHECK_MS);
   }
 
   async #loadChannelsState(client: TelegramClient, sender?: string[]) {
@@ -140,7 +198,7 @@ export class SyncService {
             return;
           }
 
-          this.logger.info(`Received message ${event.message.id} from ${channel.name}`);
+          this.logger.info(`Received message ${event.message.id} from ${channel.name} | text=${(event.message.message ?? '').slice(0, 60).replace(/\n/g, ' ')} media=${!!(event.message as any).media}`);
           const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
 
           try {
@@ -195,7 +253,7 @@ export class SyncService {
 
         const eventBuilder = await this.messageService.addChannelMessageListener(channel.name, handler, channel.channelId);
         this.sourceChannelHandlers.set(channel.name, { handler, eventBuilder });
-        this.logger.info(`Listener attached for ${channel.name}`);
+        this.logger.info(`Listener attached for ${channel.name} (peerId=${channel.channelId})`);
 
         // Avoid bursting entity resolution for large channel lists.
         await delay(50);

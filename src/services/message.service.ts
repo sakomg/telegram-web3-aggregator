@@ -193,4 +193,8 @@ export class MessageService {
   removeChannelMessageListener(handler: (event: NewMessageEvent) => Promise<void>, eventBuilder: NewMessage) {
     this.userClient.removeEventHandler(handler, eventBuilder);
   }
+
+  isUserClientConnected(): boolean {
+    return this.userClient.connected === true;
+  }
 }
