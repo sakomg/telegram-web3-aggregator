@@ -140,6 +140,7 @@ export class SyncService {
             return;
           }
 
+          this.logger.info(`Received message ${event.message.id} from ${channel.name}`);
           const normalizedText = (event.message.message ?? '').replace(/\s+/g, ' ').trim();
 
           try {
@@ -162,6 +163,9 @@ export class SyncService {
             }
 
             if (event.message.id <= channel.messageId) {
+              this.logger.warn(
+                `Skipped message ${event.message.id} from ${channel.name} (reason: already_processed, stored id: ${channel.messageId})`,
+              );
               return;
             }
 
