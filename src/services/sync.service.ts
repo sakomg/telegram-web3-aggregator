@@ -191,7 +191,7 @@ export class SyncService {
 
         const eventBuilder = await this.messageService.addChannelMessageListener(channel.name, handler, channel.channelId);
         this.sourceChannelHandlers.set(channel.name, { handler, eventBuilder });
-        this.logger.debug(`Listener attached for ${channel.name}`);
+        this.logger.info(`Listener attached for ${channel.name}`);
 
         // Avoid bursting entity resolution for large channel lists.
         await delay(50);
