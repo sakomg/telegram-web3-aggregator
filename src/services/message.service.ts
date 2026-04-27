@@ -190,6 +190,16 @@ export class MessageService {
     return eventBuilder;
   }
 
+  addRawMessageListener(handler: (event: NewMessageEvent) => void) {
+    const eventBuilder = new NewMessage({});
+    this.userClient.addEventHandler(handler, eventBuilder);
+    return eventBuilder;
+  }
+
+  removeRawMessageListener(handler: (event: NewMessageEvent) => void, eventBuilder: NewMessage) {
+    this.userClient.removeEventHandler(handler, eventBuilder);
+  }
+
   removeChannelMessageListener(handler: (event: NewMessageEvent) => Promise<void>, eventBuilder: NewMessage) {
     this.userClient.removeEventHandler(handler, eventBuilder);
   }
