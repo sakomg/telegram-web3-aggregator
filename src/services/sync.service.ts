@@ -20,7 +20,7 @@ export class SyncService {
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
 
-  private static readonly INTER_CHANNEL_DELAY_MS = 2_000;
+  private static readonly INTER_CHANNEL_DELAY_MS = 4_000;
   private static readonly INTER_PASS_DELAY_MS = 30_000;
 
   private static toRecipients(sender: string | string[] | undefined): string[] {

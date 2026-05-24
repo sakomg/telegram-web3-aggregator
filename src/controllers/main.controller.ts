@@ -60,10 +60,7 @@ export default class MainController {
 
         const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES');
         if (!adminUsernames.includes(sender.username)) {
-          await botClient.sendMessage(sender, {
-            message:
-              '🛑 You do not have permission to send messages. Please contact @saskakomegunov if you would like to add a channel to the pool or for any other requests/suggestions.',
-          });
+          await botClient.sendMessage(sender, { message: '🛑 You do not have permission to send messages.' });
           return;
         }
         const messageCommand = message.trim().split(/\s+/)[0];

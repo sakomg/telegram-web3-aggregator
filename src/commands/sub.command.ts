@@ -53,10 +53,10 @@ export class SubCommand implements CommandHandler {
       replyMessage = '🗑️ Store channel is empty.';
     }
 
-    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
-
     if (didUpdateChannels) {
-      await this.syncService.refreshSubscriptions(botClient);
+      this.syncService.refreshSubscriptions(botClient).then(() => {
+        botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
+      });
     }
   }
 }
