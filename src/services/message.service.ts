@@ -42,37 +42,29 @@ export class MessageService {
     }
   }
 
-  async getMessagesHistory(channel: string, limit: number) {
-    let result: Record<string, any> = { success: true, value: null };
-
+  async getMessagesHistory(channel: string, limit: number): Promise<Record<string, any>> {
+    const result: Record<string, any> = { success: true, value: null };
     try {
       const peer = await this.#getPeer(channel, 'USER');
-      result.value = await this.userClient.invoke(
-        new Api.messages.GetHistory({
-          peer,
-          limit,
-        }),
-      );
+      result.value = await this.userClient.invoke(new Api.messages.GetHistory({ peer, limit }));
     } catch (e) {
+      if (e instanceof FloodWaitError) {
+        this.logger.warn(`FloodWait on getMessagesHistory for ${channel}: waiting ${e.seconds}s`);
+        await delay(e.seconds * 1000);
+        return this.getMessagesHistory(channel, limit);
+      }
       this.logger.error(`Failed to fetch history for ${channel}`, e);
       result.success = false;
       result.value = e;
     }
-
     return result;
   }
 
   async getMessagesSince(channel: string, minId: number, limit = 50): Promise<Record<string, any>> {
-    let result: Record<string, any> = { success: true, value: null };
+    const result: Record<string, any> = { success: true, value: null };
     try {
       const peer = await this.#getPeer(channel, 'USER');
-      result.value = await this.userClient.invoke(
-        new Api.messages.GetHistory({
-          peer,
-          limit,
-          minId,
-        }),
-      );
+      result.value = await this.userClient.invoke(new Api.messages.GetHistory({ peer, limit, minId }));
     } catch (e) {
       if (e instanceof FloodWaitError) {
         this.logger.warn(`FloodWait on getMessagesSince for ${channel}: waiting ${e.seconds}s`);
@@ -86,83 +78,43 @@ export class MessageService {
     return result;
   }
 
-  async forwardMessages(fromChannel: string, toChannel: string, messageIds: Array<number>) {
+  async forwardMessages(fromChannel: string, toChannel: string, messageIds: number[]) {
     try {
       const fromPeer = await this.#getPeer(fromChannel, 'USER');
       const toPeer = await this.#getPeer(toChannel, 'USER');
-
       await this.userClient.invoke(
-        new Api.messages.ForwardMessages({
-          id: messageIds,
-          fromPeer,
-          toPeer,
-          dropMediaCaptions: false,
-          noforwards: false,
-        }),
+        new Api.messages.ForwardMessages({ id: messageIds, fromPeer, toPeer, dropMediaCaptions: false, noforwards: false }),
       );
     } catch (e) {
       throw new Error(`❌ Can't forward messages from ${fromChannel} to ${toChannel}. ` + e);
     }
   }
 
-  async transcribeAudio(channel: string, msgId: string) {
+  async joinChannel(channel: string) {
     const peer = await this.#getPeer(channel, 'USER');
-    return this.userClient.invoke(
-      new Api.messages.TranscribeAudio({
-        peer,
-        msgId: parseInt(msgId),
-      }),
-    );
+    await this.userClient.invoke(new Api.channels.JoinChannel({ channel: peer }));
   }
 
-  async sendMessageWithMarkup(channel: string, matches: RegExpExecArray) {
-    const [, buttonLabel, buttonLink, restText] = matches;
-
-    if (matches.length !== 4) {
-      throw new Error('Specify message after pin command');
-    }
-
-    if (!buttonLabel || !buttonLink || !restText) {
-      throw new Error(`Pls specify correct message format.\r\n- ❌ ${matches.join(' ')} \r\n- ✅ /pin label - url - text`);
-    }
-
-    const peer = await this.#getPeer(channel, 'BOT');
-    return this.botClient.invoke(
-      new Api.messages.SendMessage({
-        peer,
-        message: restText,
-        replyMarkup: new Api.ReplyInlineMarkup({
-          rows: [
-            new Api.KeyboardButtonRow({
-              buttons: [
-                new Api.KeyboardButtonUrl({
-                  text: buttonLabel,
-                  url: buttonLink,
-                }),
-              ],
-            }),
-          ],
-        }),
-      }),
-    );
+  async leaveChannel(channel: string) {
+    const peer = await this.#getPeer(channel, 'USER');
+    await this.userClient.invoke(new Api.channels.LeaveChannel({ channel: peer }));
   }
 
-  async pinMessage(channel: string, messageId: number) {
-    const peer = await this.#getPeer(channel, 'BOT');
-    await this.botClient.invoke(
-      new Api.messages.UpdatePinnedMessage({
-        peer,
-        id: messageId,
-        silent: true,
-      }),
-    );
+  async getChannelId(channel: string): Promise<string | null> {
+    try {
+      const peer = await this.#getPeer(channel, 'USER');
+      return peer.channelId?.toString() ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async editMessage(channel: string, messageId: number, text: string) {
     const peer = await this.#getPeer(channel, 'BOT');
-    await this.botClient.editMessage(peer, {
-      message: messageId,
-      text,
-    });
+    try {
+      await this.botClient.editMessage(peer, { message: messageId, text });
+    } catch (e) {
+      if (!String(e).includes('MESSAGE_NOT_MODIFIED')) throw e;
+    }
   }
 }

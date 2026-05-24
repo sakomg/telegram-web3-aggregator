@@ -33,10 +33,16 @@ export class SubCommand implements CommandHandler {
           if (entity.className === 'Channel') {
             if (!scrapChannels.map((item) => item.name).includes(channelName)) {
               scrapChannels.push({ name: channelName, messageId: 0 });
-              const markdown = channelsToMarkdown(scrapChannels);
-              await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, markdown);
+              await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, channelsToMarkdown(scrapChannels));
+
+              try {
+                await this.messageService.joinChannel(channelName);
+              } catch {
+                replyMessage += `⚠️ Could not auto-join ${channelName} with user account — join manually to receive live updates.\n`;
+              }
+
               didUpdateChannels = true;
-              replyMessage = `🔥 Channel <b>${channelName}</b> has been added to list.`;
+              replyMessage += `🔥 Channel <b>${channelName}</b> has been added to list.`;
             } else {
               replyMessage = `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
             }
@@ -53,10 +59,10 @@ export class SubCommand implements CommandHandler {
       replyMessage = '🗑️ Store channel is empty.';
     }
 
+    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
+
     if (didUpdateChannels) {
-      this.syncService.refreshSubscriptions(botClient).then(() => {
-        botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
-      });
+      await this.syncService.refreshSubscriptions(botClient);
     }
   }
 }

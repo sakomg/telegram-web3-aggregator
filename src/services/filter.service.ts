@@ -15,30 +15,17 @@ export class MessageFilterService {
   }
 
   private hasLink(text: string, entities?: Array<{ className?: string }>): boolean {
-    if (/(https?:\/\/|t\.me\/)/i.test(text)) {
-      return true;
-    }
-    return entities?.some((entity) => this.linkEntityClassNames.has(entity.className ?? '')) ?? false;
+    if (/(https?:\/\/|t\.me\/)/i.test(text)) return true;
+    return entities?.some((e) => this.linkEntityClassNames.has(e.className ?? '')) ?? false;
   }
 
   private hasAdKeyword(normalizedText: string): boolean {
-    return this.adKeywords.some((keyword) => normalizedText.includes(keyword.toLowerCase()));
+    return this.adKeywords.some((keyword) => normalizedText.includes(keyword));
   }
 
   private isLowValueText(normalizedText: string, hasLink: boolean): boolean {
-    if (!normalizedText) {
-      return true;
-    }
-
-    const wordCount = normalizedText.split(/\s+/).length;
-    if (normalizedText.length < this.minTextChars) {
-      return true;
-    }
-
-    if (!hasLink && wordCount < this.minWordsWithoutLink) {
-      return true;
-    }
-
+    if (normalizedText.length < this.minTextChars) return true;
+    if (!hasLink && normalizedText.split(/\s+/).length < this.minWordsWithoutLink) return true;
     return false;
   }
 
@@ -48,17 +35,9 @@ export class MessageFilterService {
     const hasMedia = Boolean(message.media);
     const containsLink = this.hasLink(rawText, message.entities);
 
-    if (!normalizedText && !hasMedia) {
-      return 'empty_message';
-    }
-
-    if (this.hasAdKeyword(normalizedText)) {
-      return 'ad_keyword';
-    }
-
-    if (!hasMedia && this.isLowValueText(normalizedText, containsLink)) {
-      return 'low_value_text';
-    }
+    if (!normalizedText && !hasMedia) return 'empty_message';
+    if (this.hasAdKeyword(normalizedText)) return 'ad_keyword';
+    if (!hasMedia && this.isLowValueText(normalizedText, containsLink)) return 'low_value_text';
 
     return null;
   }

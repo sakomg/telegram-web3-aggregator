@@ -28,11 +28,18 @@ export class RmCommand implements CommandHandler {
     if (success && value.messages?.length) {
       const lastForwardedResult = value.messages[0];
       const scrapChannels = markdownToChannels(lastForwardedResult.message);
-      if (scrapChannels.map((item) => item.name).includes(channelName)) {
-        const newChannels = scrapChannels.filter((item) => item.name !== channelName);
+      if (scrapChannels.some((ch) => ch.name === channelName)) {
+        const newChannels = scrapChannels.filter((ch) => ch.name !== channelName);
         await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, channelsToMarkdown(newChannels));
+
+        try {
+          await this.messageService.leaveChannel(channelName);
+        } catch {
+          replyMessage += `⚠️ Could not auto-leave ${channelName} with user account — leave manually.\n`;
+        }
+
         didUpdateChannels = true;
-        replyMessage = `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
+        replyMessage += `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
       } else {
         replyMessage = `🤷 Channel <b>${channelName}</b> doesn't exist in the list.`;
       }
@@ -42,10 +49,10 @@ export class RmCommand implements CommandHandler {
       replyMessage = '🗑️ Store channel is empty.';
     }
 
+    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
+
     if (didUpdateChannels) {
-      this.syncService.refreshSubscriptions(botClient).then(() => {
-        botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
-      });
+      await this.syncService.refreshSubscriptions(botClient);
     }
   }
 }

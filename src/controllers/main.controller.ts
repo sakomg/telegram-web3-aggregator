@@ -1,18 +1,8 @@
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { CommandHandler } from '../types/command-handler.interface';
-import { CommandsCommand, PinCommand, RmCommand, StartCommand, StopCommand, SubCommand, TranscribeCommand } from '../commands';
+import { CommandsCommand, RmCommand, StartCommand, StopCommand, SubCommand } from '../commands';
 import { Logger, MessageFilterService, MessageService, SyncService } from '../services';
 import TgClientAuth from '../auth/main.auth';
-
-const COMMANDS: Record<string, string> = {
-  START: '/start',
-  STOP: '/stop',
-  TRANSCRIBE: '/transcribe',
-  SUB: '/sub',
-  RM: '/rm',
-  COMMANDS: '/commands',
-  PIN: '/pin',
-};
 
 export default class MainController {
   private readonly config: any;
@@ -25,63 +15,55 @@ export default class MainController {
   }
 
   async launch() {
-    const botClientContainer = new TgClientAuth('BOT');
-    const userClientContainer = new TgClientAuth('USER');
+    const [botClient, userClient] = await Promise.all([new TgClientAuth('BOT').start(), new TgClientAuth('USER').start()]);
 
-    const [botClient, userClient] = await Promise.all([botClientContainer.start(), userClientContainer.start()]);
+    // console.log('Bot session', String((botClient.session as any).save()));
+    // console.log('User session', String((userClient.session as any).save()));
 
-    const messageFilterService = new MessageFilterService();
     const messageService = new MessageService(botClient, userClient);
-    const syncService = new SyncService(this.config, messageService, messageFilterService);
+    const syncService = new SyncService(this.config, messageService, new MessageFilterService(), userClient);
 
     const commandHandlers: Record<string, CommandHandler> = {
-      [COMMANDS.START]: new StartCommand(syncService),
-      [COMMANDS.STOP]: new StopCommand(syncService),
-      [COMMANDS.TRANSCRIBE]: new TranscribeCommand(messageService, this.config),
-      [COMMANDS.SUB]: new SubCommand(messageService, this.storageChannel, syncService),
-      [COMMANDS.RM]: new RmCommand(messageService, this.storageChannel, syncService),
-      [COMMANDS.COMMANDS]: new CommandsCommand(COMMANDS),
-      [COMMANDS.PIN]: new PinCommand(messageService, this.config),
+      '/start': new StartCommand(syncService),
+      '/stop': new StopCommand(syncService),
+      '/sub': new SubCommand(messageService, this.storageChannel, syncService),
+      '/rm': new RmCommand(messageService, this.storageChannel, syncService),
     };
+    commandHandlers['/commands'] = new CommandsCommand([...Object.keys(commandHandlers), '/commands']);
+
+    const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES') ?? [];
+    const monitoringRecipients = adminUsernames.map((u: string) => (u.startsWith('@') ? u : `@${u}`));
 
     botClient.addEventHandler(async (event: NewMessageEvent) => {
       if (!event?.message?.message) return;
 
       try {
-        const message: string = event.message.message;
-        if (!message.startsWith('/')) {
-          return;
-        }
+        const message = event.message.message;
+        if (!message.startsWith('/')) return;
 
         const sender: any = await event.message.getSender();
-        if (sender?.className !== 'User') {
-          return;
-        }
+        if (sender?.className !== 'User') return;
 
-        const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES');
         if (!adminUsernames.includes(sender.username)) {
           await botClient.sendMessage(sender, { message: '🛑 You do not have permission to send messages.' });
           return;
         }
-        const messageCommand = message.trim().split(/\s+/)[0];
-        const command = Object.keys(COMMANDS).find((key: string) => COMMANDS[key] === messageCommand);
-        if (command && commandHandlers[COMMANDS[command]]) {
-          this.logger.info(`Command received: ${messageCommand}`);
-          await commandHandlers[COMMANDS[command]].handle(botClient, sender, message);
+
+        const command = message.trim().split(/\s+/)[0];
+        const handler = commandHandlers[command];
+        if (handler) {
+          this.logger.info(`Command received: ${command}`);
+          await handler.handle(botClient, sender, message);
         } else {
-          const response = '❌ Invalid command, please check and try again. \r\n\r\n💨 /commands to view all commands.';
-          await botClient.sendMessage(sender, { message: response });
+          await botClient.sendMessage(sender, { message: '❌ Invalid command. Use /commands to see available commands.' });
         }
       } catch (e) {
         this.logger.error('Error in command handler', e);
       }
     }, new NewMessage({}));
 
-    const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES') ?? [];
-    const monitoringRecipients = adminUsernames.map((u: string) => (u.startsWith('@') ? u : `@${u}`));
-
     for (const r of monitoringRecipients) {
-      botClient.sendMessage(r, { message: '🔄 Bot restarted. Sync polling started automatically.' }).catch((e) => {
+      botClient.sendMessage(r, { message: '🔄 Bot restarted. Sync started automatically.' }).catch((e) => {
         this.logger.error(`Failed to send restart notification to ${r}`, e);
       });
     }

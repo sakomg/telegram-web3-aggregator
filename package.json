@@ -7,7 +7,8 @@
     "build": "rimraf ./build && tsc",
     "start:dev": "npx nodemon",
     "copy:env": "cp .env.example .env",
-    "start": "npm run build && node build/main.js"
+    "start": "npm run build && node build/main.js",
+    "import-channels": "ts-node src/scripts/import-channels.ts"
   },
   "author": "Alexander Komegunov <alekomegunov@gmail.com>",
   "license": "ISC",

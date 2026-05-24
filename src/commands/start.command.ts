@@ -10,8 +10,7 @@ export class StartCommand implements CommandHandler {
   }
 
   async handle(botClient: TelegramClient, sender: any) {
-    this.syncService.start(botClient, sender).then(() => {
-      botClient.sendMessage(sender, { message: `🎬 Started.`, parseMode: 'html' });
-    });
+    await botClient.sendMessage(sender, { message: '🎬 Starting sync, catch-up may take a few minutes…', parseMode: 'html' });
+    this.syncService.start(botClient, sender).catch(() => {});
   }
 }
