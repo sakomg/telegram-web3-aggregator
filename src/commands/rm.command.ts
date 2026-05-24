@@ -1,13 +1,12 @@
 import { TelegramClient } from 'telegram';
 import { CommandHandler } from '../types/command-handler.interface';
 import { channelsToMarkdown, clearChannelName, markdownToChannels } from '../utils/main.utils';
-import { Logger, MessageService, SyncService } from '../services';
+import { MessageService, SyncService } from '../services';
 
 export class RmCommand implements CommandHandler {
   private readonly messageService: MessageService;
   private readonly storageChannel: string;
   private readonly syncService: SyncService;
-  private readonly logger = new Logger('RmCommand');
 
   constructor(messageService: MessageService, storageChannel: string, syncService: SyncService) {
     this.messageService = messageService;
@@ -16,30 +15,22 @@ export class RmCommand implements CommandHandler {
   }
 
   async handle(botClient: TelegramClient, sender: any, message: string) {
-    this.logger.info('Remove command triggered');
-    await this.#processRemoveChannel(botClient, message, sender);
-  }
-
-  async #processRemoveChannel(client: TelegramClient, message: string, sender: any) {
-    let replyMessage = '';
-    let didUpdateChannels = false;
-    const rawChannelName = message?.split(' ')[1];
-    const channelName = clearChannelName(rawChannelName);
+    const channelName = clearChannelName(message?.split(' ')[1]);
     if (channelName === null) {
-      await client.sendMessage(sender, { message: '❗ Invalid channel username.', parseMode: 'html' });
+      await botClient.sendMessage(sender, { message: '❗ Invalid channel username.', parseMode: 'html' });
       return;
     }
 
+    let replyMessage = '';
+    let didUpdateChannels = false;
     const { success, value } = await this.messageService.getMessagesHistory(this.storageChannel, 1);
 
     if (success && value.messages?.length) {
       const lastForwardedResult = value.messages[0];
       const scrapChannels = markdownToChannels(lastForwardedResult.message);
-      const channelNames = scrapChannels.map((item) => item.name);
-      if (channelNames.includes(channelName)) {
+      if (scrapChannels.map((item) => item.name).includes(channelName)) {
         const newChannels = scrapChannels.filter((item) => item.name !== channelName);
-        const markdown = channelsToMarkdown(newChannels);
-        await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, markdown);
+        await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, channelsToMarkdown(newChannels));
         didUpdateChannels = true;
         replyMessage = `🔥 Channel <b>${channelName}</b> has been removed successfully.`;
       } else {
@@ -51,10 +42,10 @@ export class RmCommand implements CommandHandler {
       replyMessage = '🗑️ Store channel is empty.';
     }
 
-    await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
+    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
 
     if (didUpdateChannels) {
-      await this.syncService.refreshSubscriptions(client);
+      await this.syncService.refreshSubscriptions(botClient);
     }
   }
 }

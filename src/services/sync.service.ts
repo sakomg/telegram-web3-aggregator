@@ -20,8 +20,8 @@ export class SyncService {
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
 
-  private static readonly INTER_CHANNEL_DELAY_MS = 500; // between each channel request
-  private static readonly INTER_PASS_DELAY_MS = 30_000; // minimum gap between full passes
+  private static readonly INTER_CHANNEL_DELAY_MS = 1_000;
+  private static readonly INTER_PASS_DELAY_MS = 30_000;
 
   private static toRecipients(sender: string | string[] | undefined): string[] {
     if (!sender) return [];
@@ -39,15 +39,13 @@ export class SyncService {
       this.stop();
     }
 
-    this.logger.info('Starting sync polling');
     this.isActive = true;
     this.activeClient = client;
     this.activeSender = SyncService.toRecipients(sender);
 
     await this.#loadChannelsState(client, this.activeSender);
-    this.logger.info(`Starting continuous polling for ${this.channelsState.length} channels`);
+    this.logger.info(`Starting polling for ${this.channelsState.length} channels`);
 
-    // Fire-and-forget: loop runs in background until stop() sets isActive = false
     this.#runLoop(client);
   }
 
@@ -85,7 +83,6 @@ export class SyncService {
         await delay(SyncService.INTER_PASS_DELAY_MS);
       }
     }
-    this.logger.info('Poll loop exited');
   }
 
   async #runPollCheck(client: TelegramClient) {
@@ -97,24 +94,34 @@ export class SyncService {
         const { success, value } = await this.messageService.getMessagesSince(channel.name, channel.messageId);
         if (!success || !value?.messages?.length) continue;
 
-        // GetHistory returns newest-first; reverse to forward in chronological order
         const messages: any[] = [...value.messages].reverse();
 
+        const groups: { ids: number[]; lastId: number; lead: any }[] = [];
         for (const msg of messages) {
           if (!msg.id || msg.id <= channel.messageId) continue;
+          const prev = groups[groups.length - 1];
+          const gid = msg.groupedId?.toString();
+          if (gid && prev && prev.lead.groupedId?.toString() === gid) {
+            prev.ids.push(msg.id);
+            prev.lastId = msg.id;
+          } else {
+            groups.push({ ids: [msg.id], lastId: msg.id, lead: msg });
+          }
+        }
 
-          const invalidReason = this.messageFilterService.getInvalidReason(msg);
+        for (const group of groups) {
+          const invalidReason = this.messageFilterService.getInvalidReason(group.lead);
           if (invalidReason !== null) {
-            this.logger.warn(`[Poll] Skipped message ${msg.id} from ${channel.name} (reason: ${invalidReason})`);
+            this.logger.warn(`[Poll] Skipped message ${group.lead.id} from ${channel.name} (reason: ${invalidReason})`);
             continue;
           }
 
-          await this.messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), [msg.id]);
+          await this.messageService.forwardMessages(channel.name, this.config.get('TELEGRAM_TARGET_CHANNEL_USERNAME'), group.ids);
 
-          this.logger.info(`[Poll] Forwarded message ${msg.id} from ${channel.name}`);
-          await this.#notifyStateMessage(client, this.activeSender, channel.name, msg.id, msg.message);
+          this.logger.info(`[Poll] Forwarded [${group.ids.join(',')}] from ${channel.name}`);
+          await this.#notifyStateMessage(client, this.activeSender, channel.name, group.lastId, group.lead.message);
 
-          channel.messageId = msg.id;
+          channel.messageId = group.lastId;
           totalForwarded++;
         }
       } catch (e) {
@@ -126,9 +133,8 @@ export class SyncService {
 
     if (totalForwarded > 0) {
       await this.#persistChannelsState();
+      this.logger.info(`Poll check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
     }
-
-    this.logger.info(`Poll check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
   }
 
   async #loadChannelsState(client: TelegramClient, sender?: string[]) {
@@ -156,9 +162,8 @@ export class SyncService {
       return;
     }
 
-    const lastForwardedResult = value.messages[0];
-    this.storageMessageId = lastForwardedResult.id;
-    this.channelsState = markdownToChannels(lastForwardedResult.message);
+    this.storageMessageId = value.messages[0].id;
+    this.channelsState = markdownToChannels(value.messages[0].message);
     this.logger.info(`Loaded ${this.channelsState.length} channels from storage`);
   }
 
@@ -183,7 +188,7 @@ export class SyncService {
       return;
     }
 
-    const preview = (messageText ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const preview = (messageText ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
     const details = preview ? `\nPreview: <i>${preview}</i>` : '';
 
     for (const recipient of recipients) {

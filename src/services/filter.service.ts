@@ -5,33 +5,20 @@ type FilterableMessage = {
 };
 
 export class MessageFilterService {
-  private readonly adKeywords: string[];
-  private readonly minTextChars: number;
-  private readonly minWordsWithoutLink: number;
-  private readonly linkEntityClassNames: Set<string>;
-
-  constructor() {
-    this.adKeywords = ['реклама', '#ad', 'sponsored', 'promo', 'промокод'];
-    this.minTextChars = 8;
-    this.minWordsWithoutLink = 3;
-    this.linkEntityClassNames = new Set(['MessageEntityUrl', 'MessageEntityTextUrl']);
-  }
+  private readonly adKeywords = ['реклама', '#ad', 'sponsored', 'promo', 'промокод'];
+  private readonly minTextChars = 8;
+  private readonly minWordsWithoutLink = 3;
+  private readonly linkEntityClassNames = new Set(['MessageEntityUrl', 'MessageEntityTextUrl']);
 
   private normalizeText(text: string): string {
     return text.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
   private hasLink(text: string, entities?: Array<{ className?: string }>): boolean {
-    const hasUrlInText = /(https?:\/\/|t\.me\/)/i.test(text);
-    if (hasUrlInText) {
+    if (/(https?:\/\/|t\.me\/)/i.test(text)) {
       return true;
     }
-
-    if (!entities?.length) {
-      return false;
-    }
-
-    return entities.some((entity) => this.linkEntityClassNames.has(entity.className ?? ''));
+    return entities?.some((entity) => this.linkEntityClassNames.has(entity.className ?? '')) ?? false;
   }
 
   private hasAdKeyword(normalizedText: string): boolean {

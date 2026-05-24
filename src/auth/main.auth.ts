@@ -44,7 +44,6 @@ export default class TgClientAuth {
   }
 
   async start() {
-    this.logger.info('Starting Telegram client');
     await this.#startWithRetry();
     this.logger.info('Telegram client started');
     return this.tgClient;

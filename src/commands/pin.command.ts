@@ -13,7 +13,6 @@ export class PinCommand implements CommandHandler {
   }
 
   async handle(botClient: TelegramClient, sender: any, message: string) {
-    this.logger.info('Pin command triggered');
     const regex = /^\/pin\s+([^\s]+)\s+-\s+([^\s]+)\s+-\s+(.+)/;
     const matches = regex.exec(message);
 

@@ -43,18 +43,14 @@ export class MessageService {
   }
 
   async getMessagesHistory(channel: string, limit: number) {
-    let result: Record<string, any> = {
-      success: true,
-      value: null,
-    };
+    let result: Record<string, any> = { success: true, value: null };
 
     try {
       const peer = await this.#getPeer(channel, 'USER');
-      result.success = true;
       result.value = await this.userClient.invoke(
         new Api.messages.GetHistory({
           peer,
-          limit: limit,
+          limit,
         }),
       );
     } catch (e) {
@@ -78,12 +74,12 @@ export class MessageService {
         }),
       );
     } catch (e) {
-      this.logger.error(`Failed to fetch messages since ${minId} for ${channel}`, e);
       if (e instanceof FloodWaitError) {
         this.logger.warn(`FloodWait on getMessagesSince for ${channel}: waiting ${e.seconds}s`);
         await delay(e.seconds * 1000);
         return this.getMessagesSince(channel, minId, limit);
       }
+      this.logger.error(`Failed to fetch messages since ${minId} for ${channel}`, e);
       result.success = false;
       result.value = e;
     }
@@ -111,18 +107,16 @@ export class MessageService {
 
   async transcribeAudio(channel: string, msgId: string) {
     const peer = await this.#getPeer(channel, 'USER');
-    const result: any = await this.userClient.invoke(
+    return this.userClient.invoke(
       new Api.messages.TranscribeAudio({
         peer,
         msgId: parseInt(msgId),
       }),
     );
-
-    return result;
   }
 
   async sendMessageWithMarkup(channel: string, matches: RegExpExecArray) {
-    const [command, buttonLabel, buttonLink, restText] = matches;
+    const [, buttonLabel, buttonLink, restText] = matches;
 
     if (matches.length !== 4) {
       throw new Error('Specify message after pin command');
@@ -133,7 +127,7 @@ export class MessageService {
     }
 
     const peer = await this.#getPeer(channel, 'BOT');
-    const result = await this.botClient.invoke(
+    return this.botClient.invoke(
       new Api.messages.SendMessage({
         peer,
         message: restText,
@@ -151,8 +145,6 @@ export class MessageService {
         }),
       }),
     );
-
-    return result;
   }
 
   async pinMessage(channel: string, messageId: number) {

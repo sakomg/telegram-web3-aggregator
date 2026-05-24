@@ -25,7 +25,6 @@ export default class MainController {
   }
 
   async launch() {
-    this.logger.info('Launching controller');
     const botClientContainer = new TgClientAuth('BOT');
     const userClientContainer = new TgClientAuth('USER');
 
@@ -49,13 +48,12 @@ export default class MainController {
       if (!event?.message?.message) return;
 
       try {
-        const messageWrapper = event.message;
-        const message: string = messageWrapper.message;
+        const message: string = event.message.message;
         if (!message.startsWith('/')) {
           return;
         }
 
-        const sender: any = await messageWrapper.getSender();
+        const sender: any = await event.message.getSender();
         if (sender?.className !== 'User') {
           return;
         }
@@ -82,7 +80,6 @@ export default class MainController {
       }
     }, new NewMessage({}));
 
-    this.logger.info('Starting sync service on launch');
     const adminUsernames: string[] = this.config.get('TELEGRAM_ADMIN_USERNAMES') ?? [];
     const monitoringRecipients = adminUsernames.map((u: string) => (u.startsWith('@') ? u : `@${u}`));
 
@@ -93,8 +90,5 @@ export default class MainController {
     }
 
     await syncService.start(botClient, monitoringRecipients);
-
-    // this.logger.debug(String((botClient.session as any).save()));
-    // this.logger.debug(String((userClient.session as any).save()));
   }
 }

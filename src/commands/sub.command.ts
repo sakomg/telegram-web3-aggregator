@@ -2,13 +2,12 @@ import { TelegramClient } from 'telegram';
 import { Entity } from 'telegram/define';
 import { CommandHandler } from '../types/command-handler.interface';
 import { channelsToMarkdown, clearChannelName, markdownToChannels } from '../utils/main.utils';
-import { Logger, MessageService, SyncService } from '../services';
+import { MessageService, SyncService } from '../services';
 
 export class SubCommand implements CommandHandler {
   private readonly messageService: MessageService;
   private readonly storageChannel: string;
   private readonly syncService: SyncService;
-  private readonly logger = new Logger('SubCommand');
 
   constructor(messageService: MessageService, storageChannel: string, syncService: SyncService) {
     this.messageService = messageService;
@@ -17,11 +16,6 @@ export class SubCommand implements CommandHandler {
   }
 
   async handle(botClient: TelegramClient, sender: any, message: string) {
-    this.logger.info('Sub command triggered');
-    await this.#processSubscriptionChannel(botClient, sender, message);
-  }
-
-  async #processSubscriptionChannel(client: TelegramClient, sender: any, message: string) {
     let replyMessage = '';
     let didUpdateChannels = false;
     const rawChannelName = message?.split(' ')[1];
@@ -35,7 +29,7 @@ export class SubCommand implements CommandHandler {
         replyMessage = '❗ Invalid channel username.';
       } else {
         try {
-          const entity: Entity = await client.getEntity(channelName);
+          const entity: Entity = await botClient.getEntity(channelName);
           if (entity.className === 'Channel') {
             if (!scrapChannels.map((item) => item.name).includes(channelName)) {
               scrapChannels.push({ name: channelName, messageId: 0 });
@@ -59,10 +53,10 @@ export class SubCommand implements CommandHandler {
       replyMessage = '🗑️ Store channel is empty.';
     }
 
-    await client.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
+    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
 
     if (didUpdateChannels) {
-      await this.syncService.refreshSubscriptions(client);
+      await this.syncService.refreshSubscriptions(botClient);
     }
   }
 }
