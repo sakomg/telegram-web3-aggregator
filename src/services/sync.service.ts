@@ -20,7 +20,7 @@ export class SyncService {
   private activeClient: TelegramClient | null = null;
   private activeSender?: string[];
 
-  private static readonly INTER_CHANNEL_DELAY_MS = 1_000;
+  private static readonly INTER_CHANNEL_DELAY_MS = 2_000;
   private static readonly INTER_PASS_DELAY_MS = 30_000;
 
   private static toRecipients(sender: string | string[] | undefined): string[] {
@@ -87,6 +87,7 @@ export class SyncService {
 
   async #runPollCheck(client: TelegramClient) {
     let totalForwarded = 0;
+    let didUpdateState = false;
 
     for (const channel of this.channelsState) {
       if (!this.isActive) break;
@@ -113,6 +114,8 @@ export class SyncService {
           const invalidReason = this.messageFilterService.getInvalidReason(group.lead);
           if (invalidReason !== null) {
             this.logger.warn(`[Poll] Skipped message ${group.lead.id} from ${channel.name} (reason: ${invalidReason})`);
+            channel.messageId = group.lastId;
+            didUpdateState = true;
             continue;
           }
 
@@ -122,6 +125,7 @@ export class SyncService {
           await this.#notifyStateMessage(client, this.activeSender, channel.name, group.lastId, group.lead.message);
 
           channel.messageId = group.lastId;
+          didUpdateState = true;
           totalForwarded++;
         }
       } catch (e) {
@@ -131,8 +135,10 @@ export class SyncService {
       await delay(SyncService.INTER_CHANNEL_DELAY_MS);
     }
 
-    if (totalForwarded > 0) {
+    if (didUpdateState) {
       await this.#persistChannelsState();
+    }
+    if (totalForwarded > 0) {
       this.logger.info(`Poll check complete | forwarded=${totalForwarded} channels=${this.channelsState.length}`);
     }
   }
