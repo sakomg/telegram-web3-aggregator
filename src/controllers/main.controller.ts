@@ -1,6 +1,6 @@
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { CommandHandler } from '../types/command-handler.interface';
-import { CommandsCommand, RmCommand, StartCommand, StopCommand, SubCommand } from '../commands';
+import { CommandsCommand, RmCommand, StartCommand, StatusCommand, StopCommand, SubCommand } from '../commands';
 import { Logger, MessageFilterService, MessageService, SyncService } from '../services';
 import TgClientAuth from '../auth/main.auth';
 import { normalizeUsername } from '../utils/main.utils';
@@ -27,6 +27,7 @@ export default class MainController {
     const commandHandlers: Record<string, CommandHandler> = {
       '/start': new StartCommand(syncService),
       '/stop': new StopCommand(syncService),
+      '/status': new StatusCommand(syncService),
       '/sub': new SubCommand(messageService, syncService),
       '/rm': new RmCommand(messageService, syncService),
     };

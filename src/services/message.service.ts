@@ -19,6 +19,7 @@ export class MessageService {
 
   private static readonly HISTORY_PAGE_SIZE = 100;
   private static readonly HISTORY_MAX_PAGES = 5;
+  private static readonly PEER_DIALOGS_BATCH = 100;
 
   constructor(botClient: TelegramClient, userClient: TelegramClient) {
     this.botClient = botClient;
@@ -55,12 +56,16 @@ export class MessageService {
     return cache.get(channelKey);
   }
 
-  async getLatestMessage(channel: string): Promise<any | undefined> {
+  async getLatestMessages(channel: string, limit: number): Promise<any[]> {
     const peer = await this.#getPeer(channel, 'USER');
     const result: any = await this.#withFloodWait(`history ${channel}`, () =>
-      this.userClient.invoke(new Api.messages.GetHistory({ peer, limit: 1 })),
+      this.userClient.invoke(new Api.messages.GetHistory({ peer, limit })),
     );
-    return result.messages?.[0];
+    return result.messages ?? [];
+  }
+
+  async getLatestMessage(channel: string): Promise<any | undefined> {
+    return (await this.getLatestMessages(channel, 1))[0];
   }
 
   // Newest-first pages bounded by minId, so a long gap is not truncated to one page
@@ -104,6 +109,23 @@ export class MessageService {
     return channels;
   }
 
+  // Cheap periodic check for already known peers: top message ids by channel id
+  async getTopMessageIds(channels: string[]): Promise<Map<string, number>> {
+    const topIds = new Map<string, number>();
+    for (let i = 0; i < channels.length; i += MessageService.PEER_DIALOGS_BATCH) {
+      const batch = channels.slice(i, i + MessageService.PEER_DIALOGS_BATCH);
+      const peers = await Promise.all(batch.map((ch) => this.#getPeer(ch, 'USER')));
+      const result = await this.#withFloodWait('peer dialogs', () =>
+        this.userClient.invoke(new Api.messages.GetPeerDialogs({ peers: peers.map((peer) => new Api.InputDialogPeer({ peer })) })),
+      );
+      for (const dialog of result.dialogs) {
+        const channelId = (dialog.peer as any).channelId?.toString();
+        if (channelId && dialog instanceof Api.Dialog) topIds.set(channelId, dialog.topMessage);
+      }
+    }
+    return topIds;
+  }
+
   async resolveChannel(channel: string): Promise<any> {
     return this.#withFloodWait(`resolve ${channel}`, () => this.userClient.getEntity(this.#getChannelKey(channel)));
   }
@@ -118,7 +140,7 @@ export class MessageService {
 
   async joinChannel(channel: string) {
     const peer = await this.#getPeer(channel, 'USER');
-    await this.userClient.invoke(new Api.channels.JoinChannel({ channel: peer }));
+    await this.#withFloodWait(`join ${channel}`, () => this.userClient.invoke(new Api.channels.JoinChannel({ channel: peer })));
   }
 
   async leaveChannel(channel: string) {
@@ -137,6 +159,17 @@ export class MessageService {
 
   async sendMessage(recipient: string, text: string) {
     await this.botClient.sendMessage(recipient, { message: text, parseMode: 'html' });
+  }
+
+  async postMessage(channel: string, text: string): Promise<number> {
+    const peer = await this.#getPeer(channel, 'BOT');
+    const message = await this.#withFloodWait(`post ${channel}`, () => this.botClient.sendMessage(peer, { message: text }));
+    return message.id;
+  }
+
+  async deleteMessages(channel: string, messageIds: number[]) {
+    const peer = await this.#getPeer(channel, 'BOT');
+    await this.#withFloodWait(`delete ${channel}`, () => this.botClient.deleteMessages(peer, messageIds, { revoke: true }));
   }
 
   async editMessage(channel: string, messageId: number, text: string) {

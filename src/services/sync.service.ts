@@ -1,31 +1,43 @@
 import { TelegramClient } from 'telegram';
 import { NewMessage, NewMessageEvent } from 'telegram/events';
+import { ChannelState } from '../types/channel-state.type';
+import { DuplicateService } from './duplicate.service';
 import { MessageFilterService } from './filter.service';
 import { Logger } from './logger.service';
 import { MessageService } from './message.service';
-import { channelsToMarkdown, delay, markdownToChannels, normalizeUsername } from '../utils/main.utils';
-
-type ChannelState = {
-  name: string;
-  messageId: number;
-};
+import { StorageService } from './storage.service';
+import { delay, normalizeUsername } from '../utils/main.utils';
 
 type MsgGroup = { ids: number[]; lastId: number; lead: any };
 
 type AlbumBuffer = MsgGroup & { timer: ReturnType<typeof setTimeout> };
 
+export type SyncStatus = {
+  isActive: boolean;
+  channels: number;
+  startedAt: Date | null;
+  lastCatchUpAt: Date | null;
+  forwarded: number;
+  duplicates: number;
+  failed: number;
+  gaps: number;
+  filtered: Record<string, number>;
+  unsubscribed: string[];
+};
+
 export class SyncService {
   private readonly messageService: MessageService;
   private readonly messageFilterService: MessageFilterService;
+  private readonly duplicateService = new DuplicateService();
+  private readonly storage: StorageService;
   private readonly userClient: TelegramClient;
   private readonly recipients: string[];
-  private readonly storageChannel: string;
   private readonly targetChannel: string;
   private readonly logger = new Logger('SyncService');
   private channelsState: ChannelState[] = [];
   private channelIdMap = new Map<string, ChannelState>();
-  private storageMessageId: number | null = null;
-  private persistedMarkdown = '';
+  private subscribed = new Set<ChannelState>();
+  private lastFullScanAt = 0;
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private isActive = false;
   private albumBuffers = new Map<string, AlbumBuffer>();
@@ -34,11 +46,26 @@ export class SyncService {
   private catchUpTimer: ReturnType<typeof setInterval> | null = null;
   private isCatchingUp = false;
   private unsubscribedKey = '';
+  private stats = SyncService.#emptyStats();
 
   private static readonly CATCH_UP_DELAY_MS = 2_000;
   private static readonly CATCH_UP_INTERVAL_MS = 5 * 60_000;
+  private static readonly FULL_SCAN_INTERVAL_MS = 60 * 60_000;
   private static readonly PERSIST_DELAY_MS = 10_000;
   private static readonly ALBUM_WAIT_MS = 500;
+
+  static #emptyStats() {
+    return {
+      startedAt: null as Date | null,
+      lastCatchUpAt: null as Date | null,
+      forwarded: 0,
+      duplicates: 0,
+      failed: 0,
+      gaps: 0,
+      filtered: {} as Record<string, number>,
+      unsubscribed: [] as string[],
+    };
+  }
 
   constructor(
     config: any,
@@ -51,13 +78,15 @@ export class SyncService {
     this.messageFilterService = messageFilterService;
     this.userClient = userClient;
     this.recipients = recipients;
-    this.storageChannel = config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME');
+    this.storage = new StorageService(messageService, config.get('TELEGRAM_STORAGE_CHANNEL_USERNAME'));
     this.targetChannel = config.get('TELEGRAM_TARGET_CHANNEL_USERNAME');
   }
 
   async start() {
     if (this.isActive) await this.stop();
     this.isActive = true;
+    this.stats = { ...SyncService.#emptyStats(), startedAt: new Date() };
+    this.lastFullScanAt = 0;
 
     await this.#loadChannelsState();
     this.#registerHandler();
@@ -70,7 +99,8 @@ export class SyncService {
     }, SyncService.CATCH_UP_INTERVAL_MS);
 
     this.logger.info(`Live sync active for ${this.channelsState.length} channels`);
-    await this.#notify(`🔄 Sync started for <b>${this.channelsState.length}</b> channels.`);
+    const unsubscribed = this.stats.unsubscribed.length ? `\n⚠️ Not subscribed: ${this.stats.unsubscribed.join(', ')}` : '';
+    await this.#notify(`🔄 Sync started for <b>${this.channelsState.length}</b> channels.${unsubscribed}`);
   }
 
   async stop() {
@@ -95,6 +125,10 @@ export class SyncService {
     await this.#flushPersist();
   }
 
+  getStatus(): SyncStatus {
+    return { ...this.stats, isActive: this.isActive, channels: this.channelsState.length };
+  }
+
   async addChannel(rawName: string): Promise<boolean> {
     const name = normalizeUsername(rawName);
     await this.#ensureLoaded();
@@ -108,7 +142,7 @@ export class SyncService {
     const channelId = await this.messageService.getChannelId(name);
     if (channelId) this.channelIdMap.set(channelId, channel);
 
-    await this.#persistChannelsState();
+    await this.storage.save(this.channelsState);
     return true;
   }
 
@@ -119,16 +153,17 @@ export class SyncService {
     if (!channel) return false;
 
     this.channelsState = this.channelsState.filter((ch) => ch !== channel);
+    this.subscribed.delete(channel);
     for (const [id, ch] of this.channelIdMap) {
       if (ch === channel) this.channelIdMap.delete(id);
     }
 
-    await this.#persistChannelsState();
+    await this.storage.save(this.channelsState);
     return true;
   }
 
   async #ensureLoaded() {
-    if (this.storageMessageId || (await this.#loadChannelsState())) return;
+    if (this.storage.isLoaded || (await this.#loadChannelsState())) return;
     throw new Error('Storage channel is unavailable');
   }
 
@@ -142,7 +177,7 @@ export class SyncService {
     this.isCatchingUp = true;
 
     try {
-      const topIds = await this.#scanChannels();
+      const topIds = await this.#collectTopIds();
       for (const channel of this.channelsState) {
         if (!this.isActive) break;
 
@@ -152,14 +187,35 @@ export class SyncService {
         await this.#enqueue(channel, () => this.#syncChannel(channel, '[CatchUp]'));
         await delay(SyncService.CATCH_UP_DELAY_MS);
       }
+      this.stats.lastCatchUpAt = new Date();
       this.#schedulePersist();
     } finally {
       this.isCatchingUp = false;
     }
   }
 
-  // Rebuilds the channel id map from the dialog list and returns top message ids,
-  // so only channels with new posts need a history request
+  // Top message ids tell which channels have new posts, so only those need a history request.
+  // The full dialog scan also refreshes subscriptions and peers, so it runs rarely;
+  // in between, known peers are checked with a single batched request
+  async #collectTopIds(): Promise<Map<ChannelState, number>> {
+    const isFullScanDue = Date.now() - this.lastFullScanAt > SyncService.FULL_SCAN_INTERVAL_MS;
+    if (isFullScanDue || !this.subscribed.size) return this.#scanChannels();
+
+    try {
+      const channels = [...this.subscribed];
+      const byId = await this.messageService.getTopMessageIds(channels.map((ch) => ch.name));
+      const topIds = new Map<ChannelState, number>();
+      for (const [id, topId] of byId) {
+        const channel = this.channelIdMap.get(id);
+        if (channel) topIds.set(channel, topId);
+      }
+      return topIds;
+    } catch (e) {
+      this.logger.warn('Peer dialogs check failed, falling back to full scan', e);
+      return this.#scanChannels();
+    }
+  }
+
   async #scanChannels(): Promise<Map<ChannelState, number>> {
     const byUsername = new Map<string, { id: string; topMessageId: number }>();
     for (const ch of await this.messageService.getSubscribedChannels()) {
@@ -168,6 +224,7 @@ export class SyncService {
 
     const idMap = new Map<string, ChannelState>();
     const topIds = new Map<ChannelState, number>();
+    const subscribed = new Set<ChannelState>();
     const unsubscribed: string[] = [];
 
     for (const channel of this.channelsState) {
@@ -175,6 +232,7 @@ export class SyncService {
       if (found) {
         idMap.set(found.id, channel);
         topIds.set(channel, found.topMessageId);
+        subscribed.add(channel);
         continue;
       }
 
@@ -184,6 +242,9 @@ export class SyncService {
     }
 
     this.channelIdMap = idMap;
+    this.subscribed = subscribed;
+    this.lastFullScanAt = Date.now();
+    this.stats.unsubscribed = unsubscribed;
 
     const key = unsubscribed.join(',');
     if (key !== this.unsubscribedKey) {
@@ -229,6 +290,7 @@ export class SyncService {
       if (!this.isActive || group.lastId <= channel.messageId) return;
 
       if (channel.messageId > 0 && group.ids[0] > channel.messageId + 1) {
+        this.stats.gaps++;
         this.logger.warn(`[Gap] ${channel.name}: expected ${channel.messageId + 1}, got ${group.ids[0]}. Fetching history`);
         await this.#syncChannel(channel, '[Gap]');
       } else {
@@ -295,14 +357,24 @@ export class SyncService {
 
     const invalidReason = this.messageFilterService.getInvalidReason(group.lead);
     if (invalidReason !== null) {
+      this.stats.filtered[invalidReason] = (this.stats.filtered[invalidReason] ?? 0) + 1;
       this.logger.info(`${tag} Skipped ${group.lead.id} from ${channel.name} (reason: ${invalidReason})`);
+      return;
+    }
+
+    if (this.duplicateService.isDuplicate(group.lead)) {
+      this.stats.duplicates++;
+      this.logger.info(`${tag} Skipped ${group.lead.id} from ${channel.name} (reason: duplicate)`);
       return;
     }
 
     try {
       await this.messageService.forwardMessages(channel.name, this.targetChannel, group.ids);
+      this.duplicateService.remember(group.lead);
+      this.stats.forwarded++;
       this.logger.info(`${tag} Forwarded [${group.ids.join(',')}] from ${channel.name}`);
     } catch (e) {
+      this.stats.failed++;
       this.logger.error(`${tag} Failed to forward [${group.ids.join(',')}] from ${channel.name}`, e);
       await this.#notify(`❌ Failed to forward <b>${group.ids.join(',')}</b> from <b>${channel.name}</b>: ${String(e).slice(0, 200)}`);
     }
@@ -324,43 +396,40 @@ export class SyncService {
   }
 
   async #loadChannelsState(): Promise<boolean> {
-    let storageMessage: any;
+    let stored: ChannelState[] | null;
     try {
-      storageMessage = await this.messageService.getLatestMessage(this.storageChannel);
+      stored = await this.storage.load();
     } catch (e) {
       this.logger.error('Cannot read storage channel', e);
       await this.#notify('❗ Cannot read storage channel.');
       return false;
     }
 
-    if (!storageMessage) {
+    if (!stored) {
       this.logger.warn('Storage channel is empty');
       await this.#notify('🗑️ Storage channel is empty.');
       return false;
     }
 
-    this.storageMessageId = storageMessage.id;
-    this.persistedMarkdown = storageMessage.message;
-
     // Reuse existing objects so queued tasks keep updating the live state,
     // and never move a cursor backwards if storage lags behind memory
     const known = new Map(this.channelsState.map((ch) => [ch.name, ch]));
-    this.channelsState = markdownToChannels(storageMessage.message).map((stored: ChannelState) => {
-      const existing = known.get(stored.name);
-      if (!existing) return stored;
-      existing.messageId = Math.max(existing.messageId, stored.messageId);
+    this.channelsState = stored.map((ch) => {
+      const existing = known.get(ch.name);
+      if (!existing) return ch;
+      existing.messageId = Math.max(existing.messageId, ch.messageId);
       return existing;
     });
     this.logger.info(`Loaded ${this.channelsState.length} channels from storage`);
     return true;
   }
 
-  // Cursor updates are batched into one storage edit instead of one per forwarded post
+  // Cursor updates are batched into one storage write instead of one per forwarded post
   #schedulePersist() {
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
-      this.#persistChannelsState().catch((e) => this.logger.error('Failed to persist channels state', e));
+      this.storage.save(this.channelsState).catch((e) => this.logger.error('Failed to persist channels state', e));
     }, SyncService.PERSIST_DELAY_MS);
   }
 
@@ -368,16 +437,7 @@ export class SyncService {
     if (!this.persistTimer) return;
     clearTimeout(this.persistTimer);
     this.persistTimer = null;
-    await this.#persistChannelsState();
-  }
-
-  async #persistChannelsState() {
-    if (!this.storageMessageId) return;
-    const markdown = channelsToMarkdown(this.channelsState);
-    if (markdown.trim() === this.persistedMarkdown.trim()) return;
-
-    await this.messageService.editMessage(this.storageChannel, this.storageMessageId, markdown);
-    this.persistedMarkdown = markdown;
+    await this.storage.save(this.channelsState);
   }
 
   async #notify(text: string) {

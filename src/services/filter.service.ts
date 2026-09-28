@@ -5,7 +5,9 @@ type FilterableMessage = {
 };
 
 export class MessageFilterService {
-  private readonly adKeywords = ['реклама', '#ad', 'sponsored', 'promo', 'промокод'];
+  // Whole-word matches only: "#ad" must not hit "#address", "promo" must not hit "promotion"
+  private readonly adPattern =
+    /(?<![\p{L}\p{N}_])(#?реклам\p{L}*|#ad|#ads|sponsored|promo|promos|promocode|промокод\p{L}*)(?![\p{L}\p{N}_])/iu;
   private readonly minTextChars = 8;
   private readonly minWordsWithoutLink = 3;
   private readonly linkEntityClassNames = new Set(['MessageEntityUrl', 'MessageEntityTextUrl']);
@@ -17,10 +19,6 @@ export class MessageFilterService {
   private hasLink(text: string, entities?: Array<{ className?: string }>): boolean {
     if (/(https?:\/\/|t\.me\/)/i.test(text)) return true;
     return entities?.some((e) => this.linkEntityClassNames.has(e.className ?? '')) ?? false;
-  }
-
-  private hasAdKeyword(normalizedText: string): boolean {
-    return this.adKeywords.some((keyword) => normalizedText.includes(keyword));
   }
 
   private isLowValueText(normalizedText: string, hasLink: boolean): boolean {
@@ -36,7 +34,7 @@ export class MessageFilterService {
     const containsLink = this.hasLink(rawText, message.entities);
 
     if (!normalizedText && !hasMedia) return 'empty_message';
-    if (this.hasAdKeyword(normalizedText)) return 'ad_keyword';
+    if (this.adPattern.test(normalizedText)) return 'ad_keyword';
     if (!hasMedia && this.isLowValueText(normalizedText, containsLink)) return 'low_value_text';
 
     return null;

@@ -55,14 +55,26 @@ export default class TgClientAuth {
 
       try {
         await this.#startByRole();
-        this.logger.warn(`Session recreated. Save this value to ${WHO_TO_SESSION[this.who]}`);
-        this.logger.warn(String((this.tgClient.session as any).save()));
+        await this.#reportNewSession();
       } catch (retryError) {
         throw this.#formatError(retryError);
       }
     }
 
     return this.tgClient;
+  }
+
+  // The session string grants full account access, so it never goes to the logs
+  async #reportNewSession() {
+    const envName = WHO_TO_SESSION[this.who];
+    if (this.who === 'BOT') {
+      this.logger.warn(`Bot session recreated from the token; ${envName} can be left empty`);
+      return;
+    }
+
+    const session = String((this.tgClient.session as any).save());
+    await this.tgClient.sendMessage('me', { message: `New ${envName}:\n<code>${session}</code>`, parseMode: 'html' });
+    this.logger.warn(`Session recreated. Copy the new ${envName} from Saved Messages of the user account`);
   }
 
   async #startAsUser(phoneNumber: string) {
