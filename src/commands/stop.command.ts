@@ -9,7 +9,8 @@ export class StopCommand implements CommandHandler {
     this.syncService = syncService;
   }
 
-  async handle(_botClient: TelegramClient, _sender: any) {
-    this.syncService.stop();
+  async handle(botClient: TelegramClient, sender: any) {
+    await this.syncService.stop();
+    await botClient.sendMessage(sender, { message: '⏹ Sync stopped.' });
   }
 }

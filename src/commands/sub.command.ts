@@ -1,68 +1,49 @@
 import { TelegramClient } from 'telegram';
-import { Entity } from 'telegram/define';
 import { CommandHandler } from '../types/command-handler.interface';
-import { channelsToMarkdown, clearChannelName, markdownToChannels } from '../utils/main.utils';
+import { clearChannelName } from '../utils/main.utils';
 import { MessageService, SyncService } from '../services';
 
 export class SubCommand implements CommandHandler {
   private readonly messageService: MessageService;
-  private readonly storageChannel: string;
   private readonly syncService: SyncService;
 
-  constructor(messageService: MessageService, storageChannel: string, syncService: SyncService) {
+  constructor(messageService: MessageService, syncService: SyncService) {
     this.messageService = messageService;
-    this.storageChannel = storageChannel;
     this.syncService = syncService;
   }
 
   async handle(botClient: TelegramClient, sender: any, message: string) {
-    let replyMessage = '';
-    let didUpdateChannels = false;
-    const rawChannelName = message?.split(' ')[1];
-    const { success, value } = await this.messageService.getMessagesHistory(this.storageChannel, 1);
+    const reply = await this.#subscribe(clearChannelName(message.split(/\s+/)[1]));
+    await botClient.sendMessage(sender, { message: reply, parseMode: 'html' });
+  }
 
-    if (success && value.messages?.length) {
-      const lastForwardedResult = value.messages[0];
-      const scrapChannels = markdownToChannels(lastForwardedResult.message);
-      const channelName: string | null = clearChannelName(rawChannelName);
-      if (channelName === null) {
-        replyMessage = '❗ Invalid channel username.';
-      } else {
-        try {
-          const entity: Entity = await botClient.getEntity(channelName);
-          if (entity.className === 'Channel') {
-            if (!scrapChannels.map((item) => item.name).includes(channelName)) {
-              scrapChannels.push({ name: channelName, messageId: 0 });
-              await this.messageService.editMessage(this.storageChannel, lastForwardedResult.id, channelsToMarkdown(scrapChannels));
+  async #subscribe(channelName: string | null): Promise<string> {
+    if (!channelName) return '❗ Invalid channel username.';
 
-              try {
-                await this.messageService.joinChannel(channelName);
-              } catch {
-                replyMessage += `⚠️ Could not auto-join ${channelName} with user account — join manually to receive live updates.\n`;
-              }
+    let entity: any;
+    try {
+      entity = await this.messageService.resolveChannel(channelName);
+    } catch {
+      return `😕 Channel <b>${channelName}</b> doesn't exist, check the username.`;
+    }
+    if (entity.className !== 'Channel') {
+      return `⚠️ Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
+    }
 
-              didUpdateChannels = true;
-              replyMessage += `🔥 Channel <b>${channelName}</b> has been added to list.`;
-            } else {
-              replyMessage = `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
-            }
-          } else {
-            replyMessage = `⚠️ Username <b>${channelName}</b> is of type <b>${entity.className}</b>. It must be channels only.`;
-          }
-        } catch (e) {
-          replyMessage = `😕 Channel <b>${channelName}</b> doesn't exist, check the username.`;
-        }
+    let warning = '';
+    try {
+      await this.messageService.joinChannel(channelName);
+    } catch (e) {
+      if (!String(e).includes('USER_ALREADY_PARTICIPANT')) {
+        warning = `⚠️ Could not auto-join ${channelName} with user account — join manually to receive live updates.\n`;
       }
-    } else if (!success) {
-      replyMessage = 'Cannot extract messages from storage.';
-    } else {
-      replyMessage = '🗑️ Store channel is empty.';
     }
 
-    await botClient.sendMessage(sender, { message: replyMessage, parseMode: 'html' });
-
-    if (didUpdateChannels) {
-      await this.syncService.refreshSubscriptions(botClient);
+    try {
+      if (!(await this.syncService.addChannel(channelName))) return `🙅🏻‍♂️ <b>${channelName}</b> is already in the list.`;
+    } catch {
+      return 'Cannot read storage channel.';
     }
+    return `${warning}🔥 Channel <b>${channelName}</b> has been added to list.`;
   }
 }

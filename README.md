@@ -5,7 +5,7 @@ This repository contains the code for a Telegram bot that aggregates posts from 
 ## Features 🌟
 
 - **Aggregated Content:** The bot collects posts from a curated list of Telegram channels focused on Web3, blockchain technology, and cryptocurrency.
-- **Almost Real-Time Updates (every 30s):** Stay informed with real-time updates and never miss important news or announcements.
+- **Real-Time Updates:** Posts are forwarded as soon as they are published, with a periodic catch-up so nothing is missed.
 - **Curated Selection:** Only the most relevant and high-quality posts are shared to keep you informed and engaged.
 
 ## Getting Started 🚀
