@@ -23,7 +23,17 @@ http
     logger.info(`HTTP server listening on port ${port}`);
   });
 
-new MainController(config)
+const controller = new MainController(config);
+
+// Flush the batched channel cursors before the platform restarts the process
+process.once('SIGTERM', () => {
+  controller
+    .shutdown()
+    .catch((error: unknown) => logger.error('Shutdown failed', error))
+    .finally(() => process.exit(0));
+});
+
+controller
   .launch()
   .then(() => logger.info('Bootstrap completed'))
   .catch((error: unknown) => {

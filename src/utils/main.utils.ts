@@ -22,10 +22,7 @@ export function channelsToMarkdown(channels: Array<any>): string {
   return `| Name | Message ID |\n| ---- | ---------- |\n${rows}\n`;
 }
 
-export function clearChannelName(url: string): string | null {
-  if (typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  if (trimmed.startsWith('https://t.me/')) return `@${trimmed.slice(13)}`;
-  if (trimmed.startsWith('@')) return trimmed;
-  return `@${trimmed}`;
+export function clearChannelName(url?: string): string | null {
+  const trimmed = url?.trim().replace(/^https:\/\/t\.me\//, '');
+  return trimmed ? normalizeUsername(trimmed) : null;
 }
